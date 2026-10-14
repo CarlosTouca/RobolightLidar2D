@@ -115,7 +115,6 @@ def test_simulator_lifecycle_and_stream():
         sim.start_scan()                       # ainda não aberto
     with pytest.raises(SourceError):
         sim.open("COM99")
-    assert Simulator.list_ports() == ["SIMULADOR"]
     sim.open("SIMULADOR")
     assert sim.get_info().model == "SIMULADOR"
     assert sim.get_health().status.value == "ok"
@@ -164,3 +163,12 @@ def test_pose_changes_view_and_rover_drives():
     for _ in range(100):
         sim._advance(1.0)                 # para na parede (folga de 300 mm), nunca a atravessa
     assert sim._pose[0] == pytest.approx(3500 - Simulator.MARGIN_MM)
+
+
+def test_rover_stops_when_commands_stop_arriving():
+    sim = Simulator(seed=0, **CLEAN)
+    sim.open("SIMULADOR")
+    sim.drive(1, 1)
+    sim._cmd_at -= Simulator.DRIVE_TIMEOUT_S + 0.1      # o último comando ficou velho
+    sim._advance(1.0)
+    assert sim._pose == [0.0, 0.0, 0.0]

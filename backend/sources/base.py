@@ -18,11 +18,6 @@ class SourceError(Exception):
 class LidarSource(ABC):
     name: str = ""
 
-    @staticmethod
-    @abstractmethod
-    def list_ports() -> list[str]:
-        """Portas/identificadores disponíveis para `open`."""
-
     @abstractmethod
     def open(self, port: str) -> None:
         """Conecta ao dispositivo. Levanta SourceError em caso de falha."""

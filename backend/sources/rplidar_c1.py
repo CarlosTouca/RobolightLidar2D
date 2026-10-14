@@ -80,12 +80,6 @@ class RplidarC1(LidarSource):
         self._leftover = b""
         self._reboot_wait = reboot_wait
 
-    # --- portas ----------------------------------------------------------------------------
-    @staticmethod
-    def list_ports() -> list[str]:
-        from .factory import list_serial_ports
-        return [p.id for p in list_serial_ports()]
-
     @property
     def error_count(self) -> int:
         """Pacotes inválidos descartados (bits de verificação, ângulo, sincronismo)."""

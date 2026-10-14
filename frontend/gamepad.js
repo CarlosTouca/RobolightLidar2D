@@ -3,11 +3,13 @@
 import { api } from './api.js';
 
 const DEADZONE = 0.15;
+const HEARTBEAT_MS = 200;
 const clamp = (v) => Math.min(1, Math.max(-1, v));
 const btn = (pad, i) => (pad.buttons[i] && pad.buttons[i].pressed ? 1 : 0);
 
 export function initGamepad() {
   let sent = '0,0';
+  let sentAt = 0;
   let inflight = false;
   let want = null;   // último comando desejado enquanto há um pedido em curso (mantém a ordem)
 
@@ -31,6 +33,13 @@ export function initGamepad() {
     const left = Math.round(clamp(fwd + turn) * 100) / 100;
     const right = Math.round(clamp(fwd - turn) * 100) / 100;
     const key = `${left},${right}`;
-    if (key !== sent) { sent = key; send(left, right); }   // sem controle: vira 0,0 e para
+    const now = performance.now();
+    // Envia ao mudar e, enquanto houver movimento, repete a cada 200 ms: o servidor para sozinho
+    // se os comandos deixarem de chegar (aba fechada, rede, "parar" perdido).
+    if (key !== sent || (key !== '0,0' && now - sentAt > HEARTBEAT_MS)) {
+      sent = key;
+      sentAt = now;
+      send(left, right);
+    }
   }, 50);
 }
