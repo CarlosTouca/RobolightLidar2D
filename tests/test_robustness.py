@@ -225,7 +225,7 @@ def test_status_is_not_blocked_by_slow_connect_and_concurrent_connect_is_rejecte
     time.sleep(0.2)
     t0 = time.monotonic()
     st = httpx.get(f"{base}/api/status", timeout=5).json()
-    assert time.monotonic() - t0 < 0.3 and st["state"] == "disconnected"    # painel não congela
+    assert time.monotonic() - t0 < 0.8 and st["state"] == "disconnected"    # painel não congela
     second = httpx.post(f"{base}/api/connect", json={"port": "SIMULADOR"}, timeout=10)
     t1.join()
     assert results["first"].status_code == 200

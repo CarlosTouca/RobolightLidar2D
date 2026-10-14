@@ -62,7 +62,6 @@ class Status:
     port: str = ""
     info: DeviceInfo | None = None
     health: Health | None = None
-    fps: float = 0.0
     points: int = 0
     errors: int = 0               # pacotes inválidos descartados pelo driver
     error: str = ""

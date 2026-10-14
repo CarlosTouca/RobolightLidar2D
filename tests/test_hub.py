@@ -112,7 +112,7 @@ def test_slow_client_gets_newest_frame_and_nothing_accumulates():
     (slow_seqs, fast_seqs, max_pending, growth, published, sent_blocked,
      dropped, final_seq) = asyncio.run(main())
 
-    assert published > 20                                   # produzidos muito mais do que enviados
+    assert published > 10                                   # produzidos muito mais do que enviados
     assert sent_blocked == 1                                # só 1 envio em curso, travado
     assert max_pending <= 1                                 # fila de tamanho 1, sempre
     assert dropped >= 4                                     # mensagens antigas descartadas

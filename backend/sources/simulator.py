@@ -127,6 +127,7 @@ class Simulator(LidarSource):
     SPEED_MM_S = 500.0   # velocidade do rover simulado com os dois lados a 100 %
     TURN_DEG_S = 90.0    # giro sobre o próprio eixo (lados opostos a 100 %)
     MARGIN_MM = 300.0    # folga mínima até as paredes
+    DRIVE_TIMEOUT_S = 0.5   # sem novo comando por este tempo, o rover para
 
     def __init__(self, scene: Scene | None = None, seed: int | None = None,
                  health: Health | None = None, **scan_kwargs):
@@ -144,12 +145,15 @@ class Simulator(LidarSource):
                         min(ys) + self.MARGIN_MM, max(ys) - self.MARGIN_MM) if xs else None
         self._pose = [0.0, 0.0, 0.0]     # x mm, y mm, rumo° (só a thread de leitura escreve)
         self._cmd = (0.0, 0.0)           # (esquerda, direita), -1..1
+        self._cmd_at = 0.0               # instante do último drive()
 
     def drive(self, left: float, right: float) -> None:
         self._cmd = (max(-1.0, min(1.0, left)), max(-1.0, min(1.0, right)))
+        self._cmd_at = time.monotonic()
 
     def _advance(self, dt: float) -> None:
-        left, right = self._cmd
+        # "Homem morto": sem comando novo por DRIVE_TIMEOUT_S, o rover para (cliente caiu ou o "parar" se perdeu).
+        left, right = self._cmd if time.monotonic() - self._cmd_at <= self.DRIVE_TIMEOUT_S else (0.0, 0.0)
         x, y, h = self._pose
         h = (h + (left - right) / 2 * self.TURN_DEG_S * dt) % 360.0   # dir < esq => horário
         v = (left + right) / 2 * self.SPEED_MM_S * dt
@@ -159,10 +163,6 @@ class Simulator(LidarSource):
             x0, x1, y0, y1 = self._bounds
             x, y = min(max(x, x0), x1), min(max(y, y0), y1)
         self._pose = [x, y, h]
-
-    @staticmethod
-    def list_ports() -> list[str]:
-        return [Simulator.PORT]
 
     def open(self, port: str) -> None:
         if port != self.PORT:
