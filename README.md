@@ -12,7 +12,8 @@ frontend HTML + Plotly.js (Scattergl).
 | Frontend (Plotly.react, zoom/pan estáveis, anéis, cor por qualidade, painel, reconexão) | Validado no navegador embutido com o simulador |
 | API de controle e máquina de estados | Validado por testes (TestClient e servidor real) |
 | Robustez (cabo puxado, porta ocupada, health em erro, WS, desligamento) | Validado **só com falhas simuladas** (simulador e serial falsa) |
-| **Driver do C1 (`rplidar_c1.py`) e parser (`rplidar_protocol.py`)** | **PENDENTE DE VALIDAÇÃO COM O HARDWARE** — nenhum byte real foi lido |
+| Parser (`rplidar_protocol.py`) | Validado contra uma captura real do C1 (9/out/2026): descritor correto e 65.702 de 65.702 pacotes válidos (`tests/fixtures/`) |
+| **Driver do C1 (`rplidar_c1.py`) de ponta a ponta** | **Roteiro abaixo ainda não registrado**: motor, falhas físicas e demais itens de "Itens não verificados" não têm registro de teste |
 
 Nada que dependa do aparelho está marcado como concluído. Veja "Itens não verificados" abaixo.
 
@@ -39,8 +40,10 @@ python -m venv .venv
 ```
 .venv\Scripts\python -m pytest -v
 ```
-Cerca de 1 minuto (vários testes usam tempo real). Os 3 testes de fixtures reais do C1 aparecem
-como *skipped* até existirem capturas em `tests/fixtures/`. Nenhum teste abre porta serial real.
+Cerca de 1 minuto (vários testes usam tempo real). Os testes de fixtures reais do C1 rodam com as
+capturas em `tests/fixtures/` (ficam *skipped* se a pasta não tiver `c1_*_scan|info|health.bin`).
+Nenhum teste abre porta serial real. Dois testes dependem de tempo (`test_robustness`, `test_hub`)
+e podem falhar de vez em quando numa máquina carregada.
 
 ## Rodar e usar
 
@@ -56,6 +59,45 @@ e a porta é liberada.
 API de controle (JSON): `GET /api/config|ports|status`, `POST /api/connect {"port": ...}`,
 `/api/disconnect`, `/api/scan/start`, `/api/scan/stop`. Transição inválida -> 409, falha da fonte
 -> 502, ambos como `{"error": {"code", "message"}}` (ver `backend/api.py`).
+
+**Rover simulado com joystick.** Com a fonte SIMULADOR, `POST /api/drive {"left": -1..1, "right": -1..1}`
+move o sensor pela sala (tração diferencial); `frontend/gamepad.js` lê um controle (Gamepad API: analógico
+esquerdo ou D-pad, X/O para parar) e envia esse comando. Só as paredes da sala bloqueiam o rover; o
+driver real ignora o comando.
+
+## Arquitetura e regras de desenvolvimento
+
+Escopo: nuvem de pontos 2D ao vivo, vista de cima, sensor na origem, mais o painel de controle.
+**Fora do escopo, sem pedido explícito:** SLAM, grade de ocupação, navegação, estatísticas de precisão,
+modos de varredura além do Standard e controle de velocidade do motor.
+
+```
+Fonte (thread) → pipeline (filtra q=0/d=0, polar→x,y,q) → Hub (1 quadro) → 5 Hz → WebSocket → Plotly
+```
+- `backend/sources/`: contrato `LidarSource` (`base.py`), `simulator.py`, `rplidar_c1.py` (+ `rplidar_protocol.py`,
+  parser puro) e `factory.py` (porta `SIMULADOR` → simulador, `COMx` → driver). **Só `sources/` importa pyserial.**
+- `backend/session.py` (estados `disconnected → connected → scanning`), `backend/hub.py` (último quadro e difusão),
+  `backend/api.py` (REST + `/ws`), `backend/main.py`, `frontend/` (HTML/JS sem build).
+
+Regras que não devem ser quebradas:
+1. No máximo **5 quadros/s** (`MAX_FPS`); o excesso é descartado, nunca enfileirado.
+2. **Fila de tamanho 1**: o hub guarda só o último quadro e cada cliente tem um único slot.
+3. **Ack obrigatório**: o cliente envia `String(seq)` depois de DESENHAR (dentro de um `finally`); o servidor
+   mantém no máximo 1 varredura sem ack em trânsito e libera outra após 2 s sem ack.
+4. **`Plotly.react` sempre, nunca `newPlot`** (um teste varre o código) e **`uirevision` constante**: só
+   `setRange()` o muda, para o zoom/pan do usuário não resetar.
+5. Envio compacto (`x[]`, `y[]` em mm inteiros, `q[]`); pontos com qualidade 0 ou distância 0 são
+   descartados no backend (`pipeline.py`).
+6. Varredura parada ou desconectada: `hub.clear()` e a tela é limpa; ninguém recebe quadro "congelado".
+7. `Session.status()` não pode pegar o lock (o painel consulta a cada 1 s).
+8. A conversão polar → cartesiano existe só em `pipeline.py` (e no `simulator.py` ao gerar); não a reimplemente.
+9. **Nunca abra porta serial real em testes** nem ao experimentar, e evite as COM3–COM8 deste PC (Bluetooth).
+   Use `FakeSerial` (`tests/fake_serial.py`) e o simulador.
+
+Armadilhas já encontradas: o uvicorn re-emite o sinal ao desligar (código de saída 3 no Windows é normal);
+`receive_text()` + `int(text)` quebra com binário ou 5000 dígitos (use o handler atual de `/ws`);
+`tracemalloc` deixa a codificação JSON lenta (testes de memória usam 15 mil pontos); os bits de
+verificação do modo Standard são fracos (o decodificador exige 3 pacotes válidos seguidos).
 
 Plotly vem de `frontend/vendor/plotly-gl2d.min.js` (v2.35.2, MIT, baixado de cdn.plot.ly);
 a página não usa CDN.
