@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lidar 2D</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="panel" aria-label="Painel de controle">
+    <h1>Lidar 2D</h1>
+
+    <section>
+      <h2>Conexão</h2>
+      <div class="row head">
+        <label for="port">Porta serial</label>
+        <button id="btn-refresh" type="button" title="Atualizar lista de portas" aria-label="Atualizar lista de portas">↻</button>
+      </div>
+      <select id="port" class="wide"></select>
+      <p id="port-desc" class="port-desc" aria-live="polite"></p>
+      <div class="row">
+        <button id="btn-connect" type="button" class="primary">Conectar</button>
+        <button id="btn-disconnect" type="button">Desconectar</button>
+      </div>
+      <div class="row">
+        <button id="btn-start" type="button" class="primary">Iniciar varredura</button>
+        <button id="btn-stop" type="button">Parar varredura</button>
+      </div>
+    </section>
+
+    <div id="error" class="error" role="alert" hidden></div>
+
+    <section>
+      <h2>Dispositivo</h2>
+      <dl class="facts">
+        <dt>Estado</dt><dd id="st-state" data-state="disconnected">desconectado</dd>
+        <dt>Modelo</dt><dd id="st-model">—</dd>
+        <dt>Firmware</dt><dd id="st-firmware">—</dd>
+        <dt>Nº de série</dt><dd id="st-serial">—</dd>
+        <dt>Saúde</dt><dd id="st-health">—</dd>
+        <dt>Pacotes inválidos</dt><dd id="st-errors">0</dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Fluxo</h2>
+      <dl class="facts">
+        <dt>Servidor</dt>
+        <dd><span id="status" class="status" data-state="connecting"><i class="dot"></i><span id="status-text">conectando…</span></span></dd>
+        <dt>FPS</dt><dd><b id="fps">0.0</b></dd>
+        <dt>Pontos/varredura</dt><dd><b id="points">0</b></dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2>Exibição</h2>
+      <label for="range">Alcance dos eixos (±m)</label>
+      <div class="row">
+        <input id="range" type="number" min="1" max="12" step="0.5" value="6" inputmode="decimal">
+        <button id="btn-range" type="button">Aplicar</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="color-q" checked> Colorir por qualidade</label>
+    </section>
+  </aside>
+
+  <main id="plot"></main>
+</div>
+
+<!-- Plotly local (bundle gl2d 2.35.2, MIT): sem CDN -->
+<script src="vendor/plotly-gl2d.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

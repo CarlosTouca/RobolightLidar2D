@@ -1,0 +1,18 @@
+[project]
+name = "lidar2d"
+version = "0.1.0"
+description = "Visualizador 2D em tempo real para o Slamtec RPLIDAR C1"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pyserial",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx", "matplotlib"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

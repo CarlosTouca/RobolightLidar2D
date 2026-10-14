@@ -1,0 +1,39 @@
+{
+  "porta": "COM9",
+  "baud": 460800,
+  "inicio": "2026-10-09T17:44:36",
+  "pedidos": {
+    "STOP": "a5 25",
+    "GET_INFO": "a5 50",
+    "GET_HEALTH": "a5 52",
+    "SCAN": "a5 20"
+  },
+  "arquivos": {
+    "c1_20261009_174436_info.bin": {
+      "bytes": 27,
+      "sha256": "89b542433d393e6246c243e10db01f74d4c6f88d17ae2343fe4baae7e716a933"
+    },
+    "c1_20261009_174436_health.bin": {
+      "bytes": 10,
+      "sha256": "4d7a4c4d4e28111ddfd7aa73b628c9ae02c2cff0ad6ca51d5757624d19a851d5"
+    },
+    "c1_20261009_174436_scan.bin": {
+      "bytes": 328520,
+      "sha256": "4c62c1a23d20de08a64864f06adade2269a332aff8ab1a94f181b79144b9961b"
+    }
+  },
+  "info_ok": true,
+  "health_ok": true,
+  "scan_segundos": 15.0,
+  "scan_sanidade": {
+    "descritor_encontrado": true,
+    "descritor_hex": "a5 5a 05 00 00 40 81",
+    "descritor_esperado_hex": "a5 5a 05 00 00 40 81",
+    "bytes_apos_descritor": 328513,
+    "pacotes_de_5_bytes": 65702,
+    "pacotes_com_bits_validos": 65702,
+    "fracao_valida": 1.0,
+    "inicios_de_volta_S1": 129
+  },
+  "fim": "2026-10-09T17:44:51"
+}
