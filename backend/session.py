@@ -109,11 +109,11 @@ class Session:
             self._state = "scanning"
             self._thread.start()
 
-    def drive(self, left: float, right: float) -> None:
+    def steer(self, x: float, y: float, speed: float) -> None:
         source = self._source          # sem lock: comando de alta frequência, não pode esperar um connect()
         if source is None:
             raise SessionError("not_connected", "não há dispositivo conectado; conecte primeiro")
-        source.drive(left, right)
+        source.steer(x, y, speed)
 
     def stop_scan(self) -> None:
         with self._lock:

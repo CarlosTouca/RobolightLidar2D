@@ -60,16 +60,16 @@ API de controle (JSON): `GET /api/config|ports|status`, `POST /api/connect {"por
 `/api/disconnect`, `/api/scan/start`, `/api/scan/stop`. Transição inválida -> 409, falha da fonte
 -> 502, ambos como `{"error": {"code", "message"}}` (ver `backend/api.py`).
 
-**Rover simulado com joystick.** Com a fonte SIMULADOR, `POST /api/drive {"cmd": "F", "speed": 150}` move o
-sensor pela sala (tração diferencial). `cmd` usa as mesmas letras do firmware do ESP32 (F T E D G I H J P,
-tabela em `backend/rover.py`) e `speed` o mesmo 0 a 255 do slider da página do rover. `frontend/gamepad.js`
-lê um controle (Gamepad API) com a mesma lógica da página do rover: D-pad ou analógico esquerdo movem,
-X/O param enquanto apertados, L1/R1 mudam a velocidade, e o comando é repetido a cada 200 ms; sem comandos
-por 0,8 s o rover para (como o firmware).
+**Rover simulado com joystick (estilo mouse).** Com a fonte SIMULADOR, `POST /api/steer {"x": -1..1, "y": -1..1,
+"speed": 0..255}` pede uma direção **na tela** (x para a direita, y para cima): o rover gira até lá (a seta
+acompanha) e anda. `frontend/gamepad.js` lê um controle (Gamepad API): analógico esquerdo (módulo = intensidade)
+ou D-pad dão a direção, X/O param enquanto apertados e L1/R1 mudam a velocidade; o comando é repetido a cada
+200 ms e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
+do firmware, onde esquerda/direita giram no lugar): é só uma forma intuitiva de explorar o mapa.
 
-Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico passa a mostrar o **mapa fixo**:
-a sala fica parada e a seta do sensor anda e gira. Com o sensor real não há `pose` e o sensor fica
-na origem, como antes. Só as paredes da sala bloqueiam o rover; o driver real ignora `/api/drive`.
+Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico mostra o **mapa fixo**: a sala
+fica parada e a seta do sensor anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
+antes. Só as paredes da sala bloqueiam o rover; o driver real ignora `/api/steer`.
 
 ## Arquitetura e regras de desenvolvimento
 

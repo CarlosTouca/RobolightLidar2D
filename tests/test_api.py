@@ -140,9 +140,9 @@ def test_usb_ports_listed_before_bluetooth_ones(monkeypatch):
     assert ids == ["SIMULADOR", "COM12", "COM3", "COM4"]
 
 
-def test_drive_needs_connection_and_validates_body(client):
-    assert client.post("/api/drive", json={"cmd": "F", "speed": 150}).status_code == 409
+def test_steer_needs_connection_and_validates_body(client):
+    assert client.post("/api/steer", json={"x": 1, "y": 0, "speed": 150}).status_code == 409
     client.post("/api/connect", json={"port": "SIMULADOR"})
-    assert client.post("/api/drive", json={"cmd": "G"}).json() == {"ok": True}   # speed é opcional
-    assert client.post("/api/drive", json={"cmd": "X", "speed": 150}).status_code == 422
-    assert client.post("/api/drive", json={"cmd": "F", "speed": 300}).status_code == 422
+    assert client.post("/api/steer", json={"x": 0.5, "y": -1}).json() == {"ok": True}   # speed é opcional
+    assert client.post("/api/steer", json={"x": 2, "y": 0}).status_code == 422
+    assert client.post("/api/steer", json={"x": 0, "y": 0, "speed": 300}).status_code == 422

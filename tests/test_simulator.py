@@ -153,34 +153,31 @@ def test_pose_changes_view_and_rover_drives():
 
     sim = Simulator(seed=0, **CLEAN)
     sim.open("SIMULADOR")
-    sim.drive(1, 1)
+    sim.steer(0, 1, 1.0)                                   # "cima" na tela, a seta já aponta para cima
     sim._advance(1.0)
     assert sim._pose[:2] == pytest.approx([0, Simulator.SPEED_MM_S]) and sim._pose[2] == 0
-    sim.drive(1, -1)                      # esquerda p/ frente, direita p/ trás = giro horário
-    sim._advance(90 / Simulator.TURN_DEG_S)   # tempo de girar 90°
+    sim.steer(1, 0, 1.0)                                   # "direita": a seta gira até 90° (horário)
+    sim._advance(90 / Simulator.TURN_DEG_S)
     assert sim._pose[2] == pytest.approx(90)
-    sim.drive(1, 1)
+    sim.steer(-1, 0, 1.0)                                  # "esquerda": gira para 270° pelo caminho mais curto
+    sim._advance(90 / Simulator.TURN_DEG_S)
+    assert sim._pose[2] == pytest.approx(0)                # 90 -> 0 (180° de erro, só 90° de giro neste passo)
+    sim._advance(90 / Simulator.TURN_DEG_S)
+    assert sim._pose[2] == pytest.approx(270)
+    sim.steer(1, 0, 1.0)
     for _ in range(100):
-        sim._advance(1.0)                 # para na parede (folga de 300 mm), nunca a atravessa
+        sim.steer(1, 0, 1.0)
+        sim._advance(1.0)                                  # para na parede (folga de 300 mm), nunca a atravessa
     assert sim._pose[0] == pytest.approx(3500 - Simulator.MARGIN_MM)
 
 
 def test_rover_stops_when_commands_stop_arriving():
     sim = Simulator(seed=0, **CLEAN)
     sim.open("SIMULADOR")
-    sim.drive(1, 1)
+    sim.steer(0, 1, 1.0)
     sim._cmd_at -= Simulator.DRIVE_TIMEOUT_S + 0.1      # o último comando ficou velho
     sim._advance(1.0)
     assert sim._pose == [0.0, 0.0, 0.0]
-
-
-def test_rover_commands_match_firmware_table():
-    from backend.rover import sides
-    assert sides("F", 255) == (1.0, 1.0) and sides("P", 255) == (0.0, 0.0)
-    assert sides("E", 255) == (-1.0, 1.0)                 # esquerda: gira para a esquerda
-    assert sides("G", 255) == (0.5, 1.0)                  # frente-esquerda: lado de dentro na metade
-    assert sides("H", 255) == (-0.5, -1.0)
-    assert sides("F", 0) == (0.0, 0.0)
 
 
 def test_scan_pose_puts_points_back_on_the_fixed_room():

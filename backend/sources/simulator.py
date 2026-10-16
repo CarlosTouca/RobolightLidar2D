@@ -124,8 +124,8 @@ class Simulator(LidarSource):
     name = "simulator"
     PORT = "SIMULADOR"
     SCAN_HZ = 10.0   # o C1 gira a ~10 Hz
-    SPEED_MM_S = 1500.0  # velocidade do rover simulado com os dois lados a 100 % (escolha de visualização)
-    TURN_DEG_S = 180.0   # giro sobre o próprio eixo (lados opostos a 100 %)
+    SPEED_MM_S = 1500.0  # velocidade do rover simulado a 100 % (escolha de visualização)
+    TURN_DEG_S = 360.0   # com que rapidez a seta gira até a direção pedida
     MARGIN_MM = 300.0    # folga mínima até as paredes
     DRIVE_TIMEOUT_S = 0.8   # sem novo comando por este tempo, o rover para (igual ao firmware)
 
@@ -138,27 +138,34 @@ class Simulator(LidarSource):
         self._scan_kwargs = scan_kwargs
         self._opened = False
         self._scanning = threading.Event()
-        # Rover simulado: tração diferencial (mesma lógica de lados do firmware do rover).
+        # Rover simulado estilo mouse: a direção pedida é na tela (x direita, y cima); ele gira até lá e anda.
         xs = [p[0] for seg in self._scene.segments for p in seg]
         ys = [p[1] for seg in self._scene.segments for p in seg]
         self._bounds = (min(xs) + self.MARGIN_MM, max(xs) - self.MARGIN_MM,
                         min(ys) + self.MARGIN_MM, max(ys) - self.MARGIN_MM) if xs else None
         self._pose = [0.0, 0.0, 0.0]     # x mm, y mm, rumo° (só a thread de leitura escreve)
-        self._cmd = (0.0, 0.0)           # (esquerda, direita), -1..1
-        self._cmd_at = 0.0               # instante do último drive()
+        self._steer = (0.0, 0.0, 0.0)    # (x, y, velocidade 0..1): direção pedida na tela e quão rápido
+        self._cmd_at = 0.0               # instante do último steer()
 
-    def drive(self, left: float, right: float) -> None:
-        self._cmd = (max(-1.0, min(1.0, left)), max(-1.0, min(1.0, right)))
+    def steer(self, x: float, y: float, speed: float) -> None:
+        mag = min(1.0, math.hypot(x, y))
+        ang = math.atan2(x, y)           # rumo pedido: 0° = +Y (cima), horário
+        self._steer = (math.sin(ang) * mag, math.cos(ang) * mag, max(0.0, min(1.0, speed)))
         self._cmd_at = time.monotonic()
 
     def _advance(self, dt: float) -> None:
         # "Homem morto": sem comando novo por DRIVE_TIMEOUT_S, o rover para (cliente caiu ou o "parar" se perdeu).
-        left, right = self._cmd if time.monotonic() - self._cmd_at <= self.DRIVE_TIMEOUT_S else (0.0, 0.0)
+        sx, sy, speed = self._steer if time.monotonic() - self._cmd_at <= self.DRIVE_TIMEOUT_S else (0.0, 0.0, 0.0)
         x, y, h = self._pose
-        h = (h + (left - right) / 2 * self.TURN_DEG_S * dt) % 360.0   # dir < esq => horário
-        v = (left + right) / 2 * self.SPEED_MM_S * dt
-        x += v * math.sin(math.radians(h))
-        y += v * math.cos(math.radians(h))
+        mag = math.hypot(sx, sy)
+        if mag > 0:
+            err = (math.degrees(math.atan2(sx, sy)) - h + 180.0) % 360.0 - 180.0   # [-180, 180)
+            step = max(-self.TURN_DEG_S * dt, min(self.TURN_DEG_S * dt, err))
+            h = (h + step) % 360.0
+            # Anda na direção em que a seta aponta; se ainda está virando muito, anda menos (ou nada).
+            v = mag * speed * self.SPEED_MM_S * dt * max(0.0, math.cos(math.radians(err - step)))
+            x += v * math.sin(math.radians(h))
+            y += v * math.cos(math.radians(h))
         if self._bounds:                  # shortcut: só limita à sala; círculo e U não bloqueiam
             x0, x1, y0, y1 = self._bounds
             x, y = min(max(x, x0), x1), min(max(y, y0), y1)
@@ -168,7 +175,7 @@ class Simulator(LidarSource):
         if port != self.PORT:
             raise SourceError(f"porta inválida para o simulador: {port!r}")
         self._opened = True
-        self._pose, self._cmd = [0.0, 0.0, 0.0], (0.0, 0.0)
+        self._pose, self._steer = [0.0, 0.0, 0.0], (0.0, 0.0, 0.0)
 
     def close(self) -> None:
         self.stop_scan()
