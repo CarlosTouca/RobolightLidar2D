@@ -72,7 +72,7 @@ function buildLayout(rangeM, revision) {
 }
 
 // Rover visto de cima (mm; x para a direita, y para a frente). A escala é só visual (o rover simulado tem 25 cm de raio).
-const ROVER_SCALE = 0.75;
+const ROVER_SCALE = 1.05;   // 0,75 x 1,4 (40% maior que a versão anterior)
 const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
 const ROVER_BODY = [rect(-130, -190, 130, 190)];
 const ROVER_WHEELS = [rect(-175, -170, -130, -60), rect(-175, 60, -130, 170),
