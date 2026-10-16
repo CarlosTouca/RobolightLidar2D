@@ -54,7 +54,7 @@ def test_ack_is_sent_in_finally_block():
 def test_panel_has_required_controls():
     for id_ in ("port", "btn-refresh", "btn-connect", "btn-disconnect", "btn-start", "btn-stop",
                 "st-state", "st-model", "st-firmware", "st-serial", "st-health", "st-errors", "port-desc", "error",
-                "range", "btn-range", "color-q", "fps", "points"):
+                "range", "btn-range", "color-q", "fps", "points", "pad-info", "pad-axes"):
         assert f'id="{id_}"' in HTML, id_
     assert 'role="alert"' in HTML                 # erros visíveis e anunciados, não só no console
     panel = JS["panel.js"]

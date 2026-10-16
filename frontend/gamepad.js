@@ -22,6 +22,7 @@ export function initGamepad(plot) {
   let prevL1 = false, prevR1 = false, prevR3 = false;
   let rot = 0;                // rotação do mapa na tela (graus, horário)
   let rotAt = performance.now();
+  const padInfo = document.getElementById('pad-info'), padAxes = document.getElementById('pad-axes');
   let inflight = false;
   let want = null;            // último comando desejado enquanto há um pedido em curso (mantém a ordem)
 
@@ -64,6 +65,10 @@ export function initGamepad(plot) {
       prevL1 = l1; prevR1 = r1;
     }
     rotAt = now;
+    if (padInfo) {                                   // diagnóstico: mostra o que o navegador enxerga do controle
+      padInfo.textContent = pad ? `${pad.mapping || 'sem mapeamento'} · giro ${Math.round(rot)}°` : 'não detectado (aperte um botão)';
+      padAxes.textContent = pad ? pad.axes.map((a) => a.toFixed(1)).join('  ') : '—';
+    }
     x = round2(x); y = round2(y);
     const key = `${x},${y}`;
     if (key !== sent || speed !== sentSpeed || (key !== '0,0' && now - sentAt > HEARTBEAT_MS)) {
