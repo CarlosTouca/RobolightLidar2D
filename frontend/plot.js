@@ -71,42 +71,54 @@ function buildLayout(rangeM, revision) {
   };
 }
 
-function sensorTrace() {
+// pose = [x mm, y mm, rumo°] do sensor no mundo; o triângulo aponta para onde o sensor olha.
+function sensorTrace([px, py, heading]) {
   return {
     type: 'scatter', // um único ponto: trace separado dos pontos medidos
     mode: 'markers',
-    x: [0], y: [0],
+    x: [px / 1000], y: [py / 1000],
     name: 'Sensor',
-    hovertemplate: 'Sensor (0, 0)<extra></extra>',
-    marker: { symbol: 'triangle-up', size: 13, color: css('--sensor'), line: { color: css('--fg'), width: 1 } },
+    hovertemplate: 'Sensor (%{x:.2f}, %{y:.2f}) m<extra></extra>',
+    marker: { symbol: 'triangle-up', size: 13, angle: heading, color: css('--sensor'),
+              line: { color: css('--fg'), width: 1 } },
   };
 }
 
 export function createPlot(el, rangeM) {
   let revision = 0;
   let layout = buildLayout(rangeM, revision);
-  let sensor = sensorTrace();
+  let pose = [0, 0, 0];   // última pose recebida; sem pose (sensor real) o sensor fica na origem
+  let sensor = sensorTrace(pose);
   let pointColor = css('--points');
 
   // Troca de tema claro/escuro: reconstrói cores; o uirevision mantém o zoom atual.
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     layout = buildLayout(rangeM, revision);   // mesma revisão: o zoom atual é mantido
-    sensor = sensorTrace();
+    sensor = sensorTrace(pose);
     pointColor = css('--points');
     if (last) update(last.frame, last.byQuality);
   });
 
   let last = null;
 
-  /** Desenha um quadro {x[], y[], q[]} (mm). Sempre Plotly.react: o gráfico nunca é recriado. */
+  /** Desenha um quadro {x[], y[], q[], pose?} (mm). Sempre Plotly.react: o gráfico nunca é recriado.
+   *  Os pontos vêm relativos ao sensor; com `pose` eles são levados ao mundo (mapa fixo, o sensor anda). */
   function update(frame, byQuality) {
     last = { frame, byQuality };
+    if (frame) {
+      pose = frame.pose || [0, 0, 0];   // fonte sem pose (sensor real): fica na origem
+      sensor = sensorTrace(pose);
+    }
+    const [px, py, heading] = pose;
+    const c = Math.cos((heading * Math.PI) / 180);
+    const s = Math.sin((heading * Math.PI) / 180);
     const n = frame ? frame.x.length : 0;
     const xs = new Float32Array(n);
     const ys = new Float32Array(n);
     for (let i = 0; i < n; i++) {
-      xs[i] = frame.x[i] / 1000;
-      ys[i] = frame.y[i] / 1000;
+      const x = frame.x[i], y = frame.y[i];
+      xs[i] = (px + x * c + y * s) / 1000;
+      ys[i] = (py - x * s + y * c) / 1000;
     }
     const points = {
       type: 'scattergl',

@@ -117,7 +117,7 @@ def simulate_scan(scene: Scene, rng: np.random.Generator, n: int = 500,
         invalid |= rng.random(n) < dropout
     d = np.where(invalid, 0.0, d)
     q = np.where(invalid, 0, q).astype(np.int64)
-    return Scan(angle_deg=angles, distance_mm=d, quality=q)
+    return Scan(angle_deg=angles, distance_mm=d, quality=q, pose=pose)
 
 
 class Simulator(LidarSource):
@@ -127,7 +127,7 @@ class Simulator(LidarSource):
     SPEED_MM_S = 500.0   # velocidade do rover simulado com os dois lados a 100 %
     TURN_DEG_S = 90.0    # giro sobre o próprio eixo (lados opostos a 100 %)
     MARGIN_MM = 300.0    # folga mínima até as paredes
-    DRIVE_TIMEOUT_S = 0.5   # sem novo comando por este tempo, o rover para
+    DRIVE_TIMEOUT_S = 0.8   # sem novo comando por este tempo, o rover para (igual ao firmware)
 
     def __init__(self, scene: Scene | None = None, seed: int | None = None,
                  health: Health | None = None, **scan_kwargs):

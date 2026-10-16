@@ -172,3 +172,34 @@ def test_rover_stops_when_commands_stop_arriving():
     sim._cmd_at -= Simulator.DRIVE_TIMEOUT_S + 0.1      # o último comando ficou velho
     sim._advance(1.0)
     assert sim._pose == [0.0, 0.0, 0.0]
+
+
+def test_rover_commands_match_firmware_table():
+    from backend.rover import sides
+    assert sides("F", 255) == (1.0, 1.0) and sides("P", 255) == (0.0, 0.0)
+    assert sides("E", 255) == (-1.0, 1.0)                 # esquerda: gira para a esquerda
+    assert sides("G", 255) == (0.5, 1.0)                  # frente-esquerda: lado de dentro na metade
+    assert sides("H", 255) == (-0.5, -1.0)
+    assert sides("F", 0) == (0.0, 0.0)
+
+
+def test_scan_pose_puts_points_back_on_the_fixed_room():
+    # Com a pose, a rotação+translação do plot.js leva os pontos de volta às paredes fixas da sala.
+    scene = Scene(segments=ROOM)
+    pose = (500.0, -300.0, 37.0)
+    frame = scan_to_frame(simulate_scan(scene, np.random.default_rng(0), **CLEAN, pose=pose))
+    assert frame.pose == pose
+    px, py, h = pose
+    c, s = math.cos(math.radians(h)), math.sin(math.radians(h))
+    for x, y in zip(frame.x, frame.y):
+        wx, wy = px + x * c + y * s, py - x * s + y * c   # mesma fórmula de frontend/plot.js
+        assert min(abs(wx + 2500), abs(wx - 3500), abs(wy + 2000), abs(wy - 3000)) < 3
+
+
+def test_encode_scan_sends_pose_only_when_present():
+    import json
+    from backend.hub import encode_scan
+    from backend.models import Frame
+    assert "pose" not in json.loads(encode_scan(1, 0.0, Frame(x=[1], y=[2], q=[3])))
+    msg = json.loads(encode_scan(1, 0.0, Frame(x=[1], y=[2], q=[3], pose=(10.4, -20.6, 33.33))))
+    assert msg["pose"] == [10, -21, 33.3]

@@ -21,4 +21,4 @@ def scan_to_frame(scan: Scan) -> Frame:
     theta = np.deg2rad(a)
     x = np.rint(d * np.sin(theta)).astype(np.int64)
     y = np.rint(d * np.cos(theta)).astype(np.int64)
-    return Frame(x=x.tolist(), y=y.tolist(), q=q.astype(np.int64).tolist())
+    return Frame(x=x.tolist(), y=y.tolist(), q=q.astype(np.int64).tolist(), pose=scan.pose)

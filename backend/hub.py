@@ -107,11 +107,13 @@ class ClientChannel:
 
 
 def encode_scan(seq: int, ts: float, frame: Frame) -> str:
-    """JSON compacto: arrays x[], y[] (mm inteiros) e q[] (qualidade); sem objetos por ponto."""
-    return json.dumps(
-        {"type": "scan", "seq": seq, "t": round(ts, 3), "x": frame.x, "y": frame.y, "q": frame.q},
-        separators=(",", ":"),
-    )
+    """JSON compacto: arrays x[], y[] (mm inteiros) e q[] (qualidade); sem objetos por ponto.
+    `pose` ([x mm, y mm, rumo°]) só vai quando a fonte informa (rover simulado)."""
+    msg = {"type": "scan", "seq": seq, "t": round(ts, 3), "x": frame.x, "y": frame.y, "q": frame.q}
+    if frame.pose:
+        px, py, heading = frame.pose
+        msg["pose"] = [round(px), round(py), round(heading, 1)]
+    return json.dumps(msg, separators=(",", ":"))
 
 
 class Hub:

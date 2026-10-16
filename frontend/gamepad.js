@@ -1,45 +1,51 @@
-// Joystick (Gamepad API, ex.: PlayStation) -> rover simulado. Analógico esquerdo ou D-pad:
-// frente/trás + giro viram a velocidade de cada lado (tração diferencial), enviada só quando muda.
+// Joystick (Gamepad API, ex.: PlayStation) -> rover simulado. Mesma lógica da página do rover:
+// D-pad ou analógico esquerdo viram as letras do firmware (F T E D G I H J P); X/O = parar
+// (enquanto apertados); L1/R1 = velocidade -/+. Só envia ao mudar e repete a cada 200 ms em movimento:
+// o servidor para o rover sozinho se os comandos deixarem de chegar.
 import { api } from './api.js';
 
-const DEADZONE = 0.15;
+const DEADZONE = 0.3;
 const HEARTBEAT_MS = 200;
-const clamp = (v) => Math.min(1, Math.max(-1, v));
-const btn = (pad, i) => (pad.buttons[i] && pad.buttons[i].pressed ? 1 : 0);
+const SPEED_STEP = 25;
+const pressed = (pad, i) => !!(pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.65));
 
 export function initGamepad() {
-  let sent = '0,0';
+  let speed = 150;            // mesmo padrão do slider da página do rover
+  let sent = 'P';
+  let sentSpeed = speed;
   let sentAt = 0;
+  let prevL1 = false, prevR1 = false;
   let inflight = false;
-  let want = null;   // último comando desejado enquanto há um pedido em curso (mantém a ordem)
+  let want = null;            // último comando desejado enquanto há um pedido em curso (mantém a ordem)
 
-  async function send(left, right) {
-    if (inflight) { want = [left, right]; return; }
+  async function send(cmd, spd) {
+    if (inflight) { want = [cmd, spd]; return; }
     inflight = true;
-    try { await api.drive(left, right); } catch { /* sem conexão com o servidor/fonte: ignora */ }
+    try { await api.drive(cmd, spd); } catch { /* sem conexão com o servidor/fonte: ignora */ }
     inflight = false;
-    if (want) { const [l, r] = want; want = null; send(l, r); }
+    if (want) { const [c, s] = want; want = null; send(c, s); }
   }
 
   setInterval(() => {
     const pad = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).find((p) => p && p.connected);
-    let fwd = 0, turn = 0;
+    let cmd = 'P';
     if (pad) {
-      const [ax, ay] = [pad.axes[0] || 0, pad.axes[1] || 0];
-      if (Math.hypot(ax, ay) > DEADZONE) { fwd = -ay; turn = ax; }
-      else { fwd = btn(pad, 12) - btn(pad, 13); turn = btn(pad, 15) - btn(pad, 14); }
-      if (btn(pad, 0) || btn(pad, 1)) fwd = turn = 0;   // X ou O: parar
+      const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
+      let f = pressed(pad, 12) || ay < -DEADZONE, t = pressed(pad, 13) || ay > DEADZONE;
+      let e = pressed(pad, 14) || ax < -DEADZONE, d = pressed(pad, 15) || ax > DEADZONE;
+      if (f && t) f = t = false;   // direções opostas se cancelam
+      if (e && d) e = d = false;
+      cmd = f ? (e ? 'G' : d ? 'I' : 'F') : t ? (e ? 'H' : d ? 'J' : 'T') : e ? 'E' : d ? 'D' : 'P';
+      if (pressed(pad, 0) || pressed(pad, 1)) cmd = 'P';   // X ou O: parada de emergência
+
+      const l1 = pressed(pad, 4), r1 = pressed(pad, 5);
+      speed = Math.max(0, Math.min(255, speed + ((r1 && !prevR1) - (l1 && !prevL1)) * SPEED_STEP));
+      prevL1 = l1; prevR1 = r1;
     }
-    const left = Math.round(clamp(fwd + turn) * 100) / 100;
-    const right = Math.round(clamp(fwd - turn) * 100) / 100;
-    const key = `${left},${right}`;
     const now = performance.now();
-    // Envia ao mudar e, enquanto houver movimento, repete a cada 200 ms: o servidor para sozinho
-    // se os comandos deixarem de chegar (aba fechada, rede, "parar" perdido).
-    if (key !== sent || (key !== '0,0' && now - sentAt > HEARTBEAT_MS)) {
-      sent = key;
-      sentAt = now;
-      send(left, right);
+    if (cmd !== sent || speed !== sentSpeed || (cmd !== 'P' && now - sentAt > HEARTBEAT_MS)) {
+      sent = cmd; sentSpeed = speed; sentAt = now;
+      send(cmd, speed);
     }
   }, 50);
 }

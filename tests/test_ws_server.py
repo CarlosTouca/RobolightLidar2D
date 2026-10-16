@@ -49,7 +49,8 @@ def test_websocket_stream_rate_and_format(server):
     seqs = [m["seq"] for m in msgs]
     assert all(b > a for a, b in zip(seqs, seqs[1:]))
     m = msgs[0]
-    assert set(m) == {"type", "seq", "t", "x", "y", "q"}
+    assert set(m) == {"type", "seq", "t", "x", "y", "q", "pose"}   # pose: só o simulador envia
+    assert len(m["pose"]) == 3
     assert len(m["x"]) == len(m["y"]) == len(m["q"]) > 100
     assert all(type(v) is int for v in m["x"] + m["y"] + m["q"])  # inteiros, sem objetos por ponto
     assert min(m["q"]) > 0                                          # q=0 descartado no backend

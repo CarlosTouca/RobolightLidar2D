@@ -8,7 +8,7 @@ REST (JSON). Erros têm sempre o formato {"error": {"code": "...", "message": ".
   POST /api/disconnect
   POST /api/scan/start
   POST /api/scan/stop
-  POST /api/drive         {"left": -1..1, "right": -1..1}  rover simulado (só o SIMULADOR reage)
+  POST /api/drive         {"cmd": "F|T|E|D|G|I|H|J|P", "speed": 0..255}  rover simulado (letras do firmware)
   409 transição inválida (ex.: iniciar varredura sem conectar) | 502 falha da fonte
 
 WebSocket /ws: o cliente envia, a cada varredura desenhada, o seu `seq` como texto
@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import config
+from .rover import Command, sides
 from .session import Session, SessionError
 from .sources.base import SourceError
 from .sources.factory import list_ports
@@ -53,13 +54,13 @@ class ConnectBody(BaseModel):
 
 
 class DriveBody(BaseModel):
-    left: float = Field(ge=-1, le=1)
-    right: float = Field(ge=-1, le=1)
+    cmd: Command
+    speed: int = Field(150, ge=0, le=255)
 
 
 @router.post("/api/drive")
 def drive(body: DriveBody, request: Request) -> dict:
-    _session(request).drive(body.left, body.right)
+    _session(request).drive(*sides(body.cmd, body.speed))
     return {"ok": True}
 
 
