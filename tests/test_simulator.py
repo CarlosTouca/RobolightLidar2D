@@ -253,7 +253,7 @@ def test_pose_is_integrated_by_wall_clock_from_any_thread():
     sim.start_scan()
     sim.steer(0, 1, 1.0)
     time.sleep(0.3)
-    p1 = sim.pose()                                        # o ticker de pose (30 Hz) integra sem esperar uma varredura
+    p1 = sim.pose()                                        # o ticker de pose (60 Hz) integra sem esperar uma varredura
     time.sleep(0.2)
     p2 = sim.pose()
     assert p2[1] > p1[1] > 0 and p2[1] - p1[1] == pytest.approx(0.2 * Simulator.SPEED_MM_S, rel=0.35)

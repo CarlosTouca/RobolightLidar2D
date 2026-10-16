@@ -199,7 +199,7 @@ class Simulator(LidarSource):
         self._opened = False
         self._scanning = threading.Event()
         # Rover simulado estilo mouse: a direção pedida é na tela (x direita, y cima); ele gira até lá e anda.
-        self._lock = threading.Lock()    # a leitura (10 Hz) e o ticker de pose (30 Hz) integram o movimento
+        self._lock = threading.Lock()    # a leitura (10 Hz) e o ticker de pose (60 Hz) integram o movimento
         self._last_t = time.monotonic()
         self._pose = [0.0, 0.0, 0.0]     # x mm, y mm, rumo°
         self._steer = (0.0, 0.0, 0.0)    # (x, y, velocidade 0..1): direção pedida na tela e quão rápido

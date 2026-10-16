@@ -39,7 +39,7 @@ def live_server():
 
 
 class _ScanOnly:
-    """Cliente WebSocket de teste: recv() só devolve varreduras. A pose do rover vai a ~30/s por outro canal
+    """Cliente WebSocket de teste: recv() só devolve varreduras. A pose do rover vai a ~60/s por outro canal
     (`{"type": "pose"}`, sem ack) e é ignorada aqui, sem gastar o prazo do recv."""
 
     def __init__(self, ws):

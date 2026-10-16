@@ -110,7 +110,7 @@ class Session:
                                             name="lidar-reader", daemon=True)
             self._state = "scanning"
             self._thread.start()
-            if self._source.pose() is not None:     # só o rover simulado: posição a ~30/s, à parte das varreduras
+            if self._source.pose() is not None:     # só o rover simulado: posição a ~60/s, à parte das varreduras
                 threading.Thread(target=self._pose_loop, args=(self._source, self._thread),
                                  name="lidar-pose", daemon=True).start()
 

@@ -328,7 +328,7 @@ def test_pose_channel_is_latest_only_skips_ack_and_new_clients_get_current_pose(
         hub.publish(make_frame(10))
         await asyncio.sleep(0.3)                            # varredura enviada e SEM ack: o fluxo das varreduras trava
         for i in range(60):
-            hub.publish_pose((100.0 + i, 200.0, 45.0))      # a pose continua chegando a ~30/s, uma por vez
+            hub.publish_pose((100.0 + i, 200.0, 45.0))      # a pose continua chegando em alta taxa, uma por vez
             await asyncio.sleep(0.01)
         pending = ch._pose_msg is not None
         hub.publish_pose((100.0 + 59, 200.0, 45.0))         # igual à anterior: não repete

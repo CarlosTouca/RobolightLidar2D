@@ -71,8 +71,8 @@ Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico m
 fica parada e o rover (desenhado de cima, com o LiDAR no centro) anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
 antes. O simulador é uma **casa** de 10 x 8 m (`house_scene()`: sala, cozinha, corredor, dois quartos e banheiro, com
 portas e móveis); o rover é um disco de 25 cm de raio que paredes e móveis bloqueiam. O driver real ignora
-`/api/steer`. A posição do rover também sai a ~30/s por um canal à parte (`{"type": "pose"}`, sem ack, só a mais nova; `POSE_FPS`),
-e o rover e a rotação do mapa deslizam entre as mensagens (`frontend/plot.js`); o rover gira com velocidade
+`/api/steer`. A posição do rover também sai a ~60/s por um canal à parte (`{"type": "pose"}`, sem ack, só a mais nova; `POSE_FPS`),
+e o rover é desenhado num canvas por cima do gráfico (fora do Plotly, na taxa da tela), deslizando entre as mensagens (`frontend/plot.js`); o rover gira com velocidade
 proporcional ao erro (suave nos ajustes finos, no máximo 200°/s).
 
 ## Arquitetura e regras de desenvolvimento

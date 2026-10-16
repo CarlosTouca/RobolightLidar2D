@@ -4,7 +4,6 @@
 // O backend envia mm inteiros; aqui convertemos para metros só para exibir.
 
 const Q_MAX = 63; // modo Standard do C1: qualidade 0..63
-const STEP_MS = 16;   // passo da animação (~60 fps); setTimeout, não depende do requestAnimationFrame
 const RING_LABEL_ANGLE = Math.SQRT1_2; // rótulos a 45° (cima-direita) de cada anel
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -72,8 +71,8 @@ function buildLayout(rangeM, revision) {
   };
 }
 
-// Rover visto de cima (mm; x para a direita, y para a frente). A escala é exagerada para dar para ver no mapa.
-const ROVER_SCALE = 1.5;
+// Rover visto de cima (mm; x para a direita, y para a frente). A escala é só visual (o rover simulado tem 25 cm de raio).
+const ROVER_SCALE = 0.75;
 const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
 const ROVER_BODY = [rect(-130, -190, 130, 190)];
 const ROVER_WHEELS = [rect(-175, -170, -130, -60), rect(-175, 60, -130, 170),
@@ -87,37 +86,14 @@ const rotate = (x, y, deg) => {
   return [x * c + y * s, -x * s + y * c];
 };
 
-// Polígonos do rover na tela: (cx, cy) = centro em metros (já girado pelo mapa); deg = rumo + giro do mapa.
-function polygons(parts, cx, cy, deg) {
-  const x = [], y = [];
-  parts.forEach((pts, k) => {
-    if (k) { x.push(null); y.push(null); }                       // vazio entre polígonos do mesmo traço
-    for (const [px, py] of pts) {
-      const [rx, ry] = rotate(px * ROVER_SCALE, py * ROVER_SCALE, deg);
-      x.push(cx + rx / 1000);
-      y.push(cy + ry / 1000);
-    }
-  });
-  return { x, y };
-}
-
-// Traços do rover (índices 1 a 4 do gráfico): corpo, rodas, frente e o sensor LiDAR no centro.
-function roverTraces(cx, cy, deg) {
-  const solid = (parts, fill) => ({
-    type: 'scatter', mode: 'lines', fill: 'toself', fillcolor: fill, hoverinfo: 'skip', showlegend: false,
-    line: { color: css('--fg'), width: 1 }, ...polygons(parts, cx, cy, deg),
-  });
-  return [
-    solid(ROVER_BODY, css('--sensor')),
-    solid(ROVER_WHEELS, '#4b5563'),                              // rodas: cinza escuro nos dois temas
-    solid(ROVER_NOSE, css('--warn')),
-    {
-      type: 'scatter', mode: 'markers', x: [cx], y: [cy], name: 'Sensor',
-      hovertemplate: 'Sensor (%{x:.2f}, %{y:.2f}) m<extra></extra>',
-      marker: { symbol: 'circle', size: 9, color: css('--bar-bg'), line: { color: css('--fg'), width: 2 } },
-    },
-  ];
-}
+// Próximo quadro de animação. Se o navegador não entregar o requestAnimationFrame (aba oculta, painel embutido),
+// um temporizador assume em até 50 ms: a animação nunca fica presa esperando por ele.
+const nextFrame = (fn) => {
+  let done = false;
+  const run = () => { if (!done) { done = true; fn(); } };
+  requestAnimationFrame(run);
+  setTimeout(run, 50);
+};
 
 export function createPlot(el, rangeM) {
   let revision = 0;
@@ -125,17 +101,66 @@ export function createPlot(el, rangeM) {
   let pointColor = css('--points');
   let last = null;                       // último {frame, byQuality} desenhado
 
-  // Mundo x tela. Os pontos de cada quadro ficam no MUNDO (mapa fixo; o sensor anda). A tela mostra o mundo
-  // girado em `rotShown` graus (analógico direito do joystick). Os dois valores que se movem entre quadros
-  // (pose do sensor e rotação) deslizam até o alvo para a imagem não "pular" no ritmo dos quadros.
+  // Mundo x tela. Os pontos de cada quadro ficam no MUNDO (mapa fixo; o rover anda). A tela mostra o mundo
+  // girado em `rotShown` graus (analógico direito do joystick). Os dois valores que se movem entre mensagens
+  // (pose do rover e rotação) deslizam até o alvo para a imagem não "pular" no ritmo das mensagens.
   let world = { x: new Float32Array(0), y: new Float32Array(0) };   // metros, no mundo
   let pose = [0, 0, 0];                  // alvo: última pose recebida; sem pose (sensor real) fica na origem
   let from = pose, shown = pose;         // pose mostrada agora e de onde o deslize começou
   let havePose = false;                  // já veio alguma pose do servidor (rover simulado)?
-  let glideStart = 0, glideMs = 33, lastPoseAt = 0;
+  let glideStart = 0, glideMs = 17, lastPoseAt = 0;
   let rotTarget = 0, rotShown = 0;       // rotação do mapa (graus, horário)
   let animating = false;
-  let drawing = false;                   // Plotly.react em andamento: o deslize não compete com ele
+  let drawing = false;                   // Plotly.react em andamento: o giro dos pontos espera por ele
+  let hooked = false;
+
+  // O rover é desenhado num canvas POR CIMA do gráfico, fora do Plotly: restyle/react custam dezenas de ms
+  // e faziam o movimento travar. Assim ele anda na taxa da tela, sem depender do que o Plotly está fazendo.
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none';
+  el.style.position = 'relative';
+  let colors = null;
+  const readColors = () => ({ body: css('--sensor'), nose: css('--warn'), line: css('--fg'), dot: css('--bar-bg') });
+
+  function drawRover() {
+    const fl = el._fullLayout;
+    const xa = fl && fl.xaxis, ya = fl && fl.yaxis;
+    if (!xa || !ya || !xa._length) return;                          // gráfico ainda não desenhado
+    if (cv.parentNode !== el) el.appendChild(cv);
+    const w = el.clientWidth, h = el.clientHeight, dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      cv.style.width = `${w}px`; cv.style.height = `${h}px`;
+    }
+    colors = colors || readColors();
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(xa._offset, ya._offset, xa._length, ya._length); ctx.clip();   // só dentro dos eixos
+    const px = (x) => xa._offset + xa.d2p(x), py = (y) => ya._offset + ya.d2p(y);              // metros -> pixels
+    const [cx, cy] = rotate(shown[0] / 1000, shown[1] / 1000, rotShown);   // posição na tela (mapa girado)
+    const deg = shown[2] + rotShown;
+    const draw = (parts, fill) => {
+      ctx.beginPath();
+      for (const pts of parts) {
+        pts.forEach(([x, y], i) => {
+          const [rx, ry] = rotate(x * ROVER_SCALE, y * ROVER_SCALE, deg);
+          const X = px(cx + rx / 1000), Y = py(cy + ry / 1000);
+          if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y);
+        });
+        ctx.closePath();
+      }
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = colors.line; ctx.stroke();
+    };
+    draw(ROVER_BODY, colors.body);
+    draw(ROVER_WHEELS, '#4b5563');                                  // rodas: cinza escuro nos dois temas
+    draw(ROVER_NOSE, colors.nose);
+    ctx.beginPath(); ctx.arc(px(cx), py(cy), 3, 0, 2 * Math.PI);    // o sensor LiDAR, no centro
+    ctx.fillStyle = colors.dot; ctx.fill(); ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.restore();
+  }
 
   const viewPoints = () => {
     const n = world.x.length;
@@ -148,21 +173,16 @@ export function createPlot(el, rangeM) {
     return [xs, ys];
   };
 
-  // Rover: posição e rumo (0° = +Y, horário) no MUNDO, levados à tela pela rotação do mapa.
-  const roverNow = () => {
-    const [cx, cy] = rotate(shown[0] / 1000, shown[1] / 1000, rotShown);
-    return roverTraces(cx, cy, shown[2] + rotShown);
-  };
-
   // Troca de tema claro/escuro: reconstrói cores; o uirevision mantém o zoom atual.
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     layout = buildLayout(rangeM, revision);   // mesma revisão: o zoom atual é mantido
     pointColor = css('--points');
+    colors = null;
     if (last) update(last.frame, last.byQuality);
   });
 
-  // Animação (só roda enquanto há o que mover): avança a pose e a rotação e atualiza o gráfico com
-  // Plotly.restyle (só x/y/ângulo; os quadros continuam chegando por Plotly.react).
+  // Animação (só roda enquanto há o que mover): avança a pose e a rotação e redesenha o rover (canvas).
+  // Girar o mapa também move os pontos, e isso sim passa pelo Plotly.restyle (só x/y).
   function step() {
     const t = Math.min(1, (performance.now() - glideStart) / glideMs);
     const dh = ((pose[2] - from[2] + 540) % 360) - 180;                    // giro pelo caminho mais curto
@@ -170,20 +190,17 @@ export function createPlot(el, rangeM) {
     const dr = ((rotTarget - rotShown + 540) % 360) - 180;
     const rotMoved = dr !== 0;
     rotShown = Math.abs(dr) < 0.05 ? rotTarget : rotShown + dr * 0.4;     // aproxima o alvo sem overshoot
-    if (el.data && !drawing) {
-      if (rotMoved) {
-        const [xs, ys] = viewPoints();
-        Plotly.restyle(el, { x: [xs], y: [ys] }, [0]);
-      }
-      const r = roverNow();
-      Plotly.restyle(el, { x: r.map((tr) => tr.x), y: r.map((tr) => tr.y) }, [1, 2, 3, 4]);
+    if (rotMoved && el.data && !drawing) {
+      const [xs, ys] = viewPoints();
+      Plotly.restyle(el, { x: [xs], y: [ys] }, [0]);
     }
-    if (t < 1 || rotShown !== rotTarget) setTimeout(step, STEP_MS); else animating = false;
+    drawRover();
+    if (t < 1 || rotShown !== rotTarget) nextFrame(step); else animating = false;
   }
-  const kick = () => { if (!animating) { animating = true; setTimeout(step, STEP_MS); } };
+  const kick = () => { if (!animating) { animating = true; nextFrame(step); } };
 
   /** Desenha um quadro {x[], y[], q[], pose?} (mm). Sempre Plotly.react: o gráfico nunca é recriado.
-   *  Os pontos vêm relativos ao sensor; com `pose` eles são levados ao mundo (mapa fixo, o sensor anda). */
+   *  Os pontos vêm relativos ao sensor; com `pose` eles são levados ao mundo (mapa fixo, o rover anda). */
   function update(frame, byQuality) {
     last = { frame, byQuality };
     if (frame) {
@@ -218,12 +235,19 @@ export function createPlot(el, rangeM) {
         : { size: 4, color: pointColor, showscale: false },
     };
     drawing = true;
-    return Plotly.react(el, [points, ...roverNow()], layout, CONFIG)
-      .finally(() => { drawing = false; });
+    return Plotly.react(el, [points], layout, CONFIG).then((r) => {
+      if (!hooked && el.on) {                       // zoom, pan e redimensionamento mudam a conversão metros -> pixels
+        hooked = true;
+        el.on('plotly_relayout', drawRover);
+        el.on('plotly_afterplot', drawRover);
+      }
+      drawRover();
+      return r;
+    }).finally(() => { drawing = false; });
   }
 
-  /** Pose atual do rover (canal rápido, ~30/s): o rover desliza do ponto anterior a este pelo tempo real
-   *  entre mensagens, sem sobra (rover parado) nem falta (rover atrasado). */
+  /** Pose atual do rover (canal rápido): o rover desliza do ponto anterior a este pelo tempo real entre
+   *  mensagens, sem sobra (rover parado) nem falta (rover atrasado). */
   function setPose(p) {
     const now = performance.now();
     if (!havePose) { pose = shown = from = p; havePose = true; }
@@ -234,6 +258,7 @@ export function createPlot(el, rangeM) {
       pose = p;
     }
     lastPoseAt = now;
+    drawRover();
     kick();
   }
 

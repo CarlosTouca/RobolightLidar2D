@@ -126,7 +126,7 @@ def encode_scan(seq: int, ts: float, frame: Frame) -> str:
 
 
 def encode_pose(pose: tuple[float, float, float]) -> str:
-    """Posição do rover: {"type": "pose", "pose": [x mm, y mm, rumo°]}; vai a ~30/s, à parte das varreduras."""
+    """Posição do rover: {"type": "pose", "pose": [x mm, y mm, rumo°]}; vai a ~60/s, à parte das varreduras."""
     x, y, heading = pose
     return json.dumps({"type": "pose", "pose": [round(x), round(y), round(heading, 1)]}, separators=(",", ":"))
 
