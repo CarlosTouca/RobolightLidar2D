@@ -13,6 +13,12 @@ const SPEED_STEP = 25;
 const pressed = (pad, i) => !!(pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.65));
 const round2 = (v) => Math.round(v * 100) / 100;
 
+// Adaptadores USB genéricos de controle de PlayStation ("USB Joystick", sem mapeamento padrão) entregam o D-pad
+// como um eixo "hat" (aqui o 9): -1 = cima e, a cada 2/7, no sentido horário; fora de [-1, 1] = solto.
+const HAT_AXIS = 9;
+const HAT_DIRS = [[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]];
+const hat = (v) => (v >= -1.01 && v <= 1.01 ? HAT_DIRS[Math.round((v + 1) * 3.5) % 8] : [0, 0]);
+
 /** `plot`: gráfico (setRotation gira o mapa). */
 export function initGamepad(plot) {
   let speed = 150;            // mesmo padrão do slider da página do rover
@@ -44,8 +50,9 @@ export function initGamepad(plot) {
       const ax = pad.axes[0] || 0, ay = -(pad.axes[1] || 0);       // eixo Y do controle: para cima é negativo
       if (Math.hypot(ax, ay) > DEADZONE) { x = ax; y = ay; }       // analógico: o módulo vira a intensidade
       else {
-        x = pressed(pad, 15) - pressed(pad, 14);                    // D-pad: direita - esquerda
-        y = pressed(pad, 12) - pressed(pad, 13);                    //        cima - baixo
+        const [hx, hy] = pad.mapping === 'standard' ? [0, 0] : hat(pad.axes[HAT_AXIS]);
+        x = pressed(pad, 15) - pressed(pad, 14) + hx;               // D-pad: direita - esquerda
+        y = pressed(pad, 12) - pressed(pad, 13) + hy;               //        cima - baixo
         const m = Math.hypot(x, y);
         if (m > 1) { x /= m; y /= m; }                              // diagonal não anda mais rápido
       }
