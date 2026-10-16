@@ -23,6 +23,8 @@ export function initGamepad(plot) {
   let rot = 0;                // rotação do mapa na tela (graus, horário)
   let rotAt = performance.now();
   const padInfo = document.getElementById('pad-info'), padAxes = document.getElementById('pad-axes');
+  const padMoved = document.getElementById('pad-moved');
+  const axMin = [], axMax = [], btnUsed = new Set();   // diagnóstico: o que já mexeu desde que a página abriu
   let inflight = false;
   let want = null;            // último comando desejado enquanto há um pedido em curso (mantém a ordem)
 
@@ -68,6 +70,12 @@ export function initGamepad(plot) {
     if (padInfo) {                                   // diagnóstico: mostra o que o navegador enxerga do controle
       padInfo.textContent = pad ? `${pad.mapping || 'sem mapeamento'} · giro ${Math.round(rot)}°` : 'não detectado (aperte um botão)';
       padAxes.textContent = pad ? pad.axes.map((a) => a.toFixed(1)).join('  ') : '—';
+      if (pad) {
+        pad.axes.forEach((a, i) => { axMin[i] = Math.min(axMin[i] ?? a, a); axMax[i] = Math.max(axMax[i] ?? a, a); });
+        pad.buttons.forEach((b, i) => { if (b.pressed) btnUsed.add(i); });
+        const moved = axMin.map((lo, i) => (axMax[i] - lo > 0.3 ? i : -1)).filter((i) => i >= 0);
+        padMoved.textContent = `eixos ${moved.join(', ') || '—'} · botões ${[...btnUsed].sort((a, b) => a - b).join(', ') || '—'}`;
+      }
     }
     x = round2(x); y = round2(y);
     const key = `${x},${y}`;
