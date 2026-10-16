@@ -35,7 +35,7 @@ def test_ports_always_include_simulator_first(client):
 
 def test_config_defaults(client):
     cfg = client.get("/api/config").json()
-    assert cfg["default_range_m"] == 6 and cfg["max_fps"] == 5 and cfg["baudrate"] == 460800
+    assert cfg["default_range_m"] == 6 and cfg["max_fps"] == 10 and cfg["baudrate"] == 460800
 
 
 def test_start_scan_without_connecting_returns_clear_error(client):

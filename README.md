@@ -63,13 +63,16 @@ API de controle (JSON): `GET /api/config|ports|status`, `POST /api/connect {"por
 **Rover simulado com joystick (estilo mouse).** Com a fonte SIMULADOR, `POST /api/steer {"x": -1..1, "y": -1..1,
 "speed": 0..255}` pede uma direção **na tela** (x para a direita, y para cima): o rover gira até lá (a seta
 acompanha) e anda. `frontend/gamepad.js` lê um controle (Gamepad API): analógico esquerdo (módulo = intensidade)
-ou D-pad dão a direção, X/O param enquanto apertados e L1/R1 mudam a velocidade; o comando é repetido a cada
-200 ms e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
+ou D-pad dão a direção, o **analógico direito gira o mapa** na tela (R3 volta a 0°; "cima" continua sendo cima
+na tela girada), X/O param enquanto apertados e L1/R1 mudam a velocidade; o comando é repetido a cada 200 ms
+e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
 do firmware, onde esquerda/direita giram no lugar): é só uma forma intuitiva de explorar o mapa.
 
 Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico mostra o **mapa fixo**: a sala
 fica parada e a seta do sensor anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
-antes. Só as paredes da sala bloqueiam o rover; o driver real ignora `/api/steer`.
+antes. O simulador é uma **casa** de 10 x 8 m (`house_scene()`: sala, cozinha, corredor, dois quartos e banheiro, com
+portas e móveis); o rover é um disco de 25 cm de raio que paredes e móveis bloqueiam. O driver real ignora
+`/api/steer`. A seta e a rotação do mapa deslizam entre os quadros (`frontend/plot.js`).
 
 ## Arquitetura e regras de desenvolvimento
 
@@ -78,7 +81,7 @@ Escopo: nuvem de pontos 2D ao vivo, vista de cima, sensor na origem, mais o pain
 modos de varredura além do Standard e controle de velocidade do motor.
 
 ```
-Fonte (thread) → pipeline (filtra q=0/d=0, polar→x,y,q) → Hub (1 quadro) → 5 Hz → WebSocket → Plotly
+Fonte (thread) → pipeline (filtra q=0/d=0, polar→x,y,q) → Hub (1 quadro) → 10 Hz → WebSocket → Plotly
 ```
 - `backend/sources/`: contrato `LidarSource` (`base.py`), `simulator.py`, `rplidar_c1.py` (+ `rplidar_protocol.py`,
   parser puro) e `factory.py` (porta `SIMULADOR` → simulador, `COMx` → driver). **Só `sources/` importa pyserial.**
@@ -86,7 +89,7 @@ Fonte (thread) → pipeline (filtra q=0/d=0, polar→x,y,q) → Hub (1 quadro) �
   `backend/api.py` (REST + `/ws`), `backend/main.py`, `frontend/` (HTML/JS sem build).
 
 Regras que não devem ser quebradas:
-1. No máximo **5 quadros/s** (`MAX_FPS`); o excesso é descartado, nunca enfileirado.
+1. No máximo **10 quadros/s** (`MAX_FPS`, o ritmo do C1); o excesso é descartado, nunca enfileirado.
 2. **Fila de tamanho 1**: o hub guarda só o último quadro e cada cliente tem um único slot.
 3. **Ack obrigatório**: o cliente envia `String(seq)` depois de DESENHAR (dentro de um `finally`); o servidor
    mantém no máximo 1 varredura sem ack em trânsito e libera outra após 2 s sem ack.

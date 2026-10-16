@@ -147,7 +147,7 @@ initPanel({
   onStopped: clearView,
 });
 
-initGamepad();
+initGamepad(plot);
 
 plot.update(null, true); // enquadramento inicial (eixos, anéis, sensor) via Plotly.react
 connect();
