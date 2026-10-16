@@ -60,7 +60,7 @@ def test_fast_client_rate_limited_to_5_per_second_with_increasing_seq():
 
     times, seqs, elapsed, published = asyncio.run(main())
     assert published > 100                                  # a fonte é bem mais rápida que 5 Hz
-    assert len(times) <= 5 * elapsed + 1                    # no máximo 5 msg/s
+    assert len(times) <= 5 * elapsed + 2                    # no máximo 5 msg/s (+1 do tick imediato, +1 de folga: o timer do Windows adianta ticks)
     assert len(times) >= 5 * elapsed * 0.7                  # mas realmente entrega ~5/s
     assert all(b > a for a, b in zip(seqs, seqs[1:]))       # seq estritamente crescente
     gaps = [b - a for a, b in zip(times, times[1:])]

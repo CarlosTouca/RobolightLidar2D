@@ -116,9 +116,11 @@ export function createPlot(el, rangeM) {
 
   // O rover é desenhado num canvas POR CIMA do gráfico, fora do Plotly: restyle/react custam dezenas de ms
   // e faziam o movimento travar. Assim ele anda na taxa da tela, sem depender do que o Plotly está fazendo.
+  // O canvas é irmão do gráfico (não filho): nada dele pode afetar o tamanho que o Plotly mede.
   const cv = document.createElement('canvas');
-  cv.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none';
-  el.style.position = 'relative';
+  cv.style.cssText = 'position:absolute;pointer-events:none';
+  el.parentNode.style.position = 'relative';
+  let lastView = '', viewChanges = 0;   // quantas vezes o tamanho ou o zoom do gráfico mudaram (painel "Tela")
   let colors = null;
   const readColors = () => ({ body: css('--sensor'), nose: css('--warn'), line: css('--fg'), dot: css('--bar-bg') });
 
@@ -126,8 +128,12 @@ export function createPlot(el, rangeM) {
     const fl = el._fullLayout;
     const xa = fl && fl.xaxis, ya = fl && fl.yaxis;
     if (!xa || !ya || !xa._length) return;                          // gráfico ainda não desenhado
-    if (cv.parentNode !== el) el.appendChild(cv);
+    if (cv.parentNode !== el.parentNode) el.parentNode.insertBefore(cv, el.nextSibling);
     const w = el.clientWidth, h = el.clientHeight, dpr = window.devicePixelRatio || 1;
+    const view = `${w}x${h} ±${Math.abs(xa.range[1] - xa.range[0]) / 2}`;
+    if (lastView && view !== lastView) viewChanges++;
+    lastView = view;
+    cv.style.left = `${el.offsetLeft}px`; cv.style.top = `${el.offsetTop}px`;
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
       cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
       cv.style.width = `${w}px`; cv.style.height = `${h}px`;
@@ -278,5 +284,8 @@ export function createPlot(el, rangeM) {
     kick();
   }
 
-  return { update, setRange, setRotation, setPose };
+  /** Tamanho, zoom e quantas vezes eles mudaram: mostra no painel se o gráfico está se redimensionando sozinho. */
+  const stats = () => ({ size: `${el.clientWidth}×${el.clientHeight}`, view: lastView, changes: viewChanges });
+
+  return { update, setRange, setRotation, setPose, stats };
 }

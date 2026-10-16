@@ -6,7 +6,8 @@
 import { api } from './api.js';
 
 const DEADZONE = 0.2;
-const ROT_DEADZONE = 0.2;
+const ROT_DEADZONE = 0.25;
+const ROT_START = 0.5;        // o giro só começa com o analógico direito bem empurrado: ruído não gira o mapa
 const ROT_DEG_S = 90;       // giro do mapa com o analógico direito todo para o lado
 const HEARTBEAT_MS = 200;
 const SPEED_STEP = 25;
@@ -28,9 +29,9 @@ export function initGamepad(plot) {
   let prevL1 = false, prevR1 = false, prevR3 = false;
   let rot = 0;                // rotação do mapa na tela (graus, horário)
   let rotAt = performance.now();
-  const padInfo = document.getElementById('pad-info'), padAxes = document.getElementById('pad-axes');
-  const padMoved = document.getElementById('pad-moved');
-  const axMin = [], axMax = [], btnUsed = new Set();   // diagnóstico: o que já mexeu desde que a página abriu
+  const padInfo = document.getElementById('pad-info');
+  let padInfoText = '';
+  let rotating = false;       // histerese do giro: começa acima de ROT_START, continua até abaixo de ROT_DEADZONE
   let inflight = false;
   let want = null;            // último comando desejado enquanto há um pedido em curso (mantém a ordem)
 
@@ -67,7 +68,8 @@ export function initGamepad(plot) {
       [x, y] = [x * c - y * s, x * s + y * c];
 
       const rx = pad.axes[2] || 0;                                   // analógico direito: gira o mapa
-      if (Math.abs(rx) > ROT_DEADZONE) rot = (rot + rx * ROT_DEG_S * (now - rotAt) / 1000 + 360) % 360;
+      rotating = Math.abs(rx) > (rotating ? ROT_DEADZONE : ROT_START);
+      if (rotating) rot = (rot + rx * ROT_DEG_S * (now - rotAt) / 1000 + 360) % 360;
       const r3 = pressed(pad, 11);
       if (r3 && !prevR3) rot = 0;
       prevR3 = r3;
@@ -78,16 +80,8 @@ export function initGamepad(plot) {
       prevL1 = l1; prevR1 = r1;
     }
     rotAt = now;
-    if (padInfo) {                                   // diagnóstico: mostra o que o navegador enxerga do controle
-      padInfo.textContent = pad ? `${pad.mapping || 'sem mapeamento'} · giro ${Math.round(rot)}°` : 'não detectado (aperte um botão)';
-      padAxes.textContent = pad ? pad.axes.map((a) => a.toFixed(1)).join('  ') : '—';
-      if (pad) {
-        pad.axes.forEach((a, i) => { axMin[i] = Math.min(axMin[i] ?? a, a); axMax[i] = Math.max(axMax[i] ?? a, a); });
-        pad.buttons.forEach((b, i) => { if (b.pressed) btnUsed.add(i); });
-        const moved = axMin.map((lo, i) => (axMax[i] - lo > 0.3 ? i : -1)).filter((i) => i >= 0);
-        padMoved.textContent = `eixos ${moved.join(', ') || '—'} · botões ${[...btnUsed].sort((a, b) => a - b).join(', ') || '—'}`;
-      }
-    }
+    const info = pad ? `${pad.mapping || 'sem mapeamento'} · giro ${Math.round(rot)}°` : 'não detectado (aperte um botão)';
+    if (padInfo && info !== padInfoText) { padInfo.textContent = padInfoText = info; }   // só mexe no DOM quando muda
     x = round2(x); y = round2(y);
     const key = `${x},${y}`;
     if (key !== sent || speed !== sentSpeed || (key !== '0,0' && now - sentAt > HEARTBEAT_MS)) {

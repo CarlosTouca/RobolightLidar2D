@@ -149,6 +149,10 @@ initPanel({
 });
 
 initGamepad(plot);
+setInterval(() => {                         // painel "Tela": tamanho do gráfico e quantas vezes mudou
+  const s = plot.stats();
+  $('view-info').textContent = `${s.size} · mudou ${s.changes}×`;
+}, 500);
 
 plot.update(null, true); // enquadramento inicial (eixos, anéis, sensor) via Plotly.react
 connect();
