@@ -80,6 +80,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* Campos que mudam enquanto o rover anda: nunca quebram linha, para a altura do painel não variar. */
+#pad-info, #view-info { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .facts b { font-weight: 600; }
 #st-state[data-state="scanning"] { color: var(--ok); font-weight: 600; }
 #st-state[data-state="connected"] { color: var(--warn); font-weight: 600; }
@@ -106,6 +108,6 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 
 @media (max-width: 720px) {
   .layout { flex-direction: column; }
-  .panel { flex: 0 0 auto; max-height: 55%; border-right: 0; border-bottom: 1px solid var(--border); }
+  .panel { flex: 0 0 45%; border-right: 0; border-bottom: 1px solid var(--border); }   /* altura fixa: o gráfico não redimensiona com o texto do painel */
   #plot { flex: 1 1 320px; }
 }

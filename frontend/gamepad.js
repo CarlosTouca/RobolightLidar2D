@@ -80,8 +80,11 @@ export function initGamepad(plot) {
       prevL1 = l1; prevR1 = r1;
     }
     rotAt = now;
-    const info = pad ? `${pad.mapping || 'sem mapeamento'} · giro ${Math.round(rot)}°` : 'não detectado (aperte um botão)';
-    if (padInfo && info !== padInfoText) { padInfo.textContent = padInfoText = info; }   // só mexe no DOM quando muda
+    const info = pad ? `giro ${Math.round(rot)}°` : 'não detectado';
+    if (padInfo && info !== padInfoText) {                       // só mexe no DOM quando muda
+      padInfo.textContent = padInfoText = info;
+      padInfo.title = pad ? `${pad.id} (${pad.mapping || 'sem mapeamento'})` : 'aperte um botão do controle';
+    }
     x = round2(x); y = round2(y);
     const key = `${x},${y}`;
     if (key !== sent || speed !== sentSpeed || (key !== '0,0' && now - sentAt > HEARTBEAT_MS)) {
