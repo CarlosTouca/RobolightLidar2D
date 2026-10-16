@@ -154,7 +154,7 @@ def test_pose_changes_view_and_rover_drives():
 
     sim = Simulator(scene=Scene(segments=ROOM), seed=0, **CLEAN)
     sim.open("SIMULADOR")
-    sim.steer(0, 1, 1.0)                                   # "cima" na tela, a seta já aponta para cima
+    sim.steer(0, 1, 1.0)                                   # "cima" na tela, o rover já aponta para cima
     sim._advance(1.0)
     assert sim._pose[:2] == pytest.approx([0, Simulator.SPEED_MM_S]) and sim._pose[2] == 0
     def run(seconds: float, step: float = 0.05):
@@ -162,7 +162,7 @@ def test_pose_changes_view_and_rover_drives():
             sim.steer(*_dir, 1.0)                                   # o comando se renova, como o heartbeat do navegador
             sim._advance(step)
 
-    _dir = (1, 0)                                          # "direita": a seta gira até 90° (horário), sem passar do alvo
+    _dir = (1, 0)                                          # "direita": o rover gira até 90° (horário), sem passar do alvo
     headings = []
     for _ in range(30):
         sim.steer(*_dir, 1.0)

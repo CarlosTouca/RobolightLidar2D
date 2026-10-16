@@ -72,19 +72,13 @@ function buildLayout(rangeM, revision) {
   };
 }
 
-// pose = [x mm, y mm, rumo°] do sensor como aparece na tela; a seta aponta para onde o sensor olha.
-function sensorTrace([px, py, heading]) {
-  return {
-    type: 'scatter', // um único ponto: trace separado dos pontos medidos
-    mode: 'markers',
-    x: [px / 1000], y: [py / 1000],
-    name: 'Sensor',
-    hovertemplate: 'Sensor (%{x:.2f}, %{y:.2f}) m<extra></extra>',
-    // Ponta de seta (como um cursor): a ponta mostra para onde o sensor olha (0° = +Y, horário).
-    marker: { symbol: 'arrow', size: 30, angle: heading, color: css('--sensor'),
-              line: { color: css('--fg'), width: 1 } },
-  };
-}
+// Rover visto de cima (mm; x para a direita, y para a frente). A escala é exagerada para dar para ver no mapa.
+const ROVER_SCALE = 1.5;
+const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+const ROVER_BODY = [rect(-130, -190, 130, 190)];
+const ROVER_WHEELS = [rect(-175, -170, -130, -60), rect(-175, 60, -130, 170),
+                      rect(130, -170, 175, -60), rect(130, 60, 175, 170)];
+const ROVER_NOSE = [[[-70, 190], [70, 190], [0, 245], [-70, 190]]];   // a frente (câmera)
 
 const DEG = Math.PI / 180;
 // Gira (x, y) em `deg` graus no sentido horário (mesma convenção do projeto: 0° = +Y, horário).
@@ -92,6 +86,38 @@ const rotate = (x, y, deg) => {
   const c = Math.cos(deg * DEG), s = Math.sin(deg * DEG);
   return [x * c + y * s, -x * s + y * c];
 };
+
+// Polígonos do rover na tela: (cx, cy) = centro em metros (já girado pelo mapa); deg = rumo + giro do mapa.
+function polygons(parts, cx, cy, deg) {
+  const x = [], y = [];
+  parts.forEach((pts, k) => {
+    if (k) { x.push(null); y.push(null); }                       // vazio entre polígonos do mesmo traço
+    for (const [px, py] of pts) {
+      const [rx, ry] = rotate(px * ROVER_SCALE, py * ROVER_SCALE, deg);
+      x.push(cx + rx / 1000);
+      y.push(cy + ry / 1000);
+    }
+  });
+  return { x, y };
+}
+
+// Traços do rover (índices 1 a 4 do gráfico): corpo, rodas, frente e o sensor LiDAR no centro.
+function roverTraces(cx, cy, deg) {
+  const solid = (parts, fill) => ({
+    type: 'scatter', mode: 'lines', fill: 'toself', fillcolor: fill, hoverinfo: 'skip', showlegend: false,
+    line: { color: css('--fg'), width: 1 }, ...polygons(parts, cx, cy, deg),
+  });
+  return [
+    solid(ROVER_BODY, css('--sensor')),
+    solid(ROVER_WHEELS, '#4b5563'),                              // rodas: cinza escuro nos dois temas
+    solid(ROVER_NOSE, css('--warn')),
+    {
+      type: 'scatter', mode: 'markers', x: [cx], y: [cy], name: 'Sensor',
+      hovertemplate: 'Sensor (%{x:.2f}, %{y:.2f}) m<extra></extra>',
+      marker: { symbol: 'circle', size: 9, color: css('--bar-bg'), line: { color: css('--fg'), width: 2 } },
+    },
+  ];
+}
 
 export function createPlot(el, rangeM) {
   let revision = 0;
@@ -122,10 +148,10 @@ export function createPlot(el, rangeM) {
     return [xs, ys];
   };
 
-  // Seta do sensor: posição e rumo (0° = +Y, horário) no MUNDO, levados à tela pela rotação do mapa.
-  const sensorNow = () => {
-    const [sx, sy] = rotate(shown[0] / 1000, shown[1] / 1000, rotShown);
-    return sensorTrace([sx * 1000, sy * 1000, shown[2] + rotShown]);
+  // Rover: posição e rumo (0° = +Y, horário) no MUNDO, levados à tela pela rotação do mapa.
+  const roverNow = () => {
+    const [cx, cy] = rotate(shown[0] / 1000, shown[1] / 1000, rotShown);
+    return roverTraces(cx, cy, shown[2] + rotShown);
   };
 
   // Troca de tema claro/escuro: reconstrói cores; o uirevision mantém o zoom atual.
@@ -149,8 +175,8 @@ export function createPlot(el, rangeM) {
         const [xs, ys] = viewPoints();
         Plotly.restyle(el, { x: [xs], y: [ys] }, [0]);
       }
-      const sn = sensorNow();
-      Plotly.restyle(el, { x: [sn.x], y: [sn.y], 'marker.angle': [sn.marker.angle] }, [1]);
+      const r = roverNow();
+      Plotly.restyle(el, { x: r.map((tr) => tr.x), y: r.map((tr) => tr.y) }, [1, 2, 3, 4]);
     }
     if (t < 1 || rotShown !== rotTarget) setTimeout(step, STEP_MS); else animating = false;
   }
@@ -161,7 +187,7 @@ export function createPlot(el, rangeM) {
   function update(frame, byQuality) {
     last = { frame, byQuality };
     if (frame) {
-      // Pontos: levados ao mundo com a pose DA VARREDURA. A seta usa a pose mais recente (setPose).
+      // Pontos: levados ao mundo com a pose DA VARREDURA. O rover usa a pose mais recente (setPose).
       if (!frame.pose && havePose) { havePose = false; pose = shown = from = [0, 0, 0]; }   // fonte sem pose (sensor real)
       else if (frame.pose && !havePose) setPose(frame.pose);                                // 1ª pose, se ainda não veio
       const [px, py, heading] = frame.pose || [0, 0, 0];
@@ -192,12 +218,12 @@ export function createPlot(el, rangeM) {
         : { size: 4, color: pointColor, showscale: false },
     };
     drawing = true;
-    return Plotly.react(el, [points, sensorNow()], layout, CONFIG)
+    return Plotly.react(el, [points, ...roverNow()], layout, CONFIG)
       .finally(() => { drawing = false; });
   }
 
-  /** Pose atual do rover (canal rápido, ~30/s): a seta desliza do ponto anterior a este pelo tempo real
-   *  entre mensagens, sem sobra (seta parada) nem falta (seta atrasada). */
+  /** Pose atual do rover (canal rápido, ~30/s): o rover desliza do ponto anterior a este pelo tempo real
+   *  entre mensagens, sem sobra (rover parado) nem falta (rover atrasado). */
   function setPose(p) {
     const now = performance.now();
     if (!havePose) { pose = shown = from = p; havePose = true; }

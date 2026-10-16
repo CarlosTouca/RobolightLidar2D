@@ -1,5 +1,5 @@
 // Joystick (Gamepad API, ex.: PlayStation) -> rover simulado, estilo mouse: o analógico esquerdo ou o
-// D-pad dão a direção NA TELA (cima = para cima no mapa); a seta gira até lá e o rover anda.
+// D-pad dão a direção NA TELA (cima = para cima no mapa); o rover gira até lá e anda.
 // O analógico DIREITO gira o mapa na tela (clicar nele, R3, volta a 0°); "cima" continua sendo cima na tela
 // girada. X/O = parar (enquanto apertados); L1/R1 = velocidade -/+. Só envia ao mudar e repete a cada 200 ms
 // em movimento: o servidor para o rover sozinho se os comandos deixarem de chegar.

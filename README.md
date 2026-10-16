@@ -61,19 +61,18 @@ API de controle (JSON): `GET /api/config|ports|status`, `POST /api/connect {"por
 -> 502, ambos como `{"error": {"code", "message"}}` (ver `backend/api.py`).
 
 **Rover simulado com joystick (estilo mouse).** Com a fonte SIMULADOR, `POST /api/steer {"x": -1..1, "y": -1..1,
-"speed": 0..255}` pede uma direção **na tela** (x para a direita, y para cima): o rover gira até lá (a seta
-acompanha) e anda. `frontend/gamepad.js` lê um controle (Gamepad API): analógico esquerdo (módulo = intensidade)
+"speed": 0..255}` pede uma direção **na tela** (x para a direita, y para cima): o rover gira até lá e anda. `frontend/gamepad.js` lê um controle (Gamepad API): analógico esquerdo (módulo = intensidade)
 ou D-pad dão a direção, o **analógico direito gira o mapa** na tela (R3 volta a 0°; "cima" continua sendo cima
 na tela girada), X/O param enquanto apertados e L1/R1 mudam a velocidade; o comando é repetido a cada 200 ms
 e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
 do firmware, onde esquerda/direita giram no lugar): é só uma forma intuitiva de explorar o mapa.
 
 Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico mostra o **mapa fixo**: a sala
-fica parada e a seta do sensor anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
+fica parada e o rover (desenhado de cima, com o LiDAR no centro) anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
 antes. O simulador é uma **casa** de 10 x 8 m (`house_scene()`: sala, cozinha, corredor, dois quartos e banheiro, com
 portas e móveis); o rover é um disco de 25 cm de raio que paredes e móveis bloqueiam. O driver real ignora
 `/api/steer`. A posição do rover também sai a ~30/s por um canal à parte (`{"type": "pose"}`, sem ack, só a mais nova; `POSE_FPS`),
-e a seta e a rotação do mapa deslizam entre as mensagens (`frontend/plot.js`); a seta gira com velocidade
+e o rover e a rotação do mapa deslizam entre as mensagens (`frontend/plot.js`); o rover gira com velocidade
 proporcional ao erro (suave nos ajustes finos, no máximo 200°/s).
 
 ## Arquitetura e regras de desenvolvimento

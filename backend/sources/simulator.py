@@ -184,7 +184,7 @@ class Simulator(LidarSource):
     PORT = "SIMULADOR"
     SCAN_HZ = 10.0   # o C1 gira a ~10 Hz
     SPEED_MM_S = 1500.0  # velocidade do rover simulado a 100 % (escolha de visualização)
-    TURN_DEG_S = 200.0   # giro máximo da seta (°/s)
+    TURN_DEG_S = 200.0   # giro máximo do rover (°/s)
     TURN_GAIN = 6.0      # o giro é proporcional ao erro (1/s): suave nos ajustes finos, até o máximo nas viradas grandes
     ROVER_RADIUS_MM = 250.0   # o rover é um disco: paredes e móveis o bloqueiam
     DRIVE_TIMEOUT_S = 0.8   # sem novo comando por este tempo, o rover para (igual ao firmware)
@@ -224,7 +224,7 @@ class Simulator(LidarSource):
                 rate = max(-self.TURN_DEG_S, min(self.TURN_DEG_S, err * self.TURN_GAIN))
                 step = max(-abs(err), min(abs(err), rate * d))          # nunca passa do alvo
                 h = (h + step) % 360.0
-                # Anda na direção em que a seta aponta; se ainda está virando muito, anda menos (ou nada).
+                # Anda na direção em que o rover aponta; se ainda está virando muito, anda menos (ou nada).
                 v = mag * speed * self.SPEED_MM_S * d * max(0.0, math.cos(math.radians(err - step)))
                 x += v * math.sin(math.radians(h))
                 y += v * math.cos(math.radians(h))
