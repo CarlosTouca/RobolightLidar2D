@@ -72,7 +72,9 @@ Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico m
 fica parada e a seta do sensor anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
 antes. O simulador é uma **casa** de 10 x 8 m (`house_scene()`: sala, cozinha, corredor, dois quartos e banheiro, com
 portas e móveis); o rover é um disco de 25 cm de raio que paredes e móveis bloqueiam. O driver real ignora
-`/api/steer`. A seta e a rotação do mapa deslizam entre os quadros (`frontend/plot.js`).
+`/api/steer`. A posição do rover também sai a ~30/s por um canal à parte (`{"type": "pose"}`, sem ack, só a mais nova; `POSE_FPS`),
+e a seta e a rotação do mapa deslizam entre as mensagens (`frontend/plot.js`); a seta gira com velocidade
+proporcional ao erro (suave nos ajustes finos, no máximo 200°/s).
 
 ## Arquitetura e regras de desenvolvimento
 

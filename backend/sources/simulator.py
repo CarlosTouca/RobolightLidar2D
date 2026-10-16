@@ -184,7 +184,8 @@ class Simulator(LidarSource):
     PORT = "SIMULADOR"
     SCAN_HZ = 10.0   # o C1 gira a ~10 Hz
     SPEED_MM_S = 1500.0  # velocidade do rover simulado a 100 % (escolha de visualização)
-    TURN_DEG_S = 360.0   # com que rapidez a seta gira até a direção pedida
+    TURN_DEG_S = 200.0   # giro máximo da seta (°/s)
+    TURN_GAIN = 6.0      # o giro é proporcional ao erro (1/s): suave nos ajustes finos, até o máximo nas viradas grandes
     ROVER_RADIUS_MM = 250.0   # o rover é um disco: paredes e móveis o bloqueiam
     DRIVE_TIMEOUT_S = 0.8   # sem novo comando por este tempo, o rover para (igual ao firmware)
 
@@ -198,7 +199,9 @@ class Simulator(LidarSource):
         self._opened = False
         self._scanning = threading.Event()
         # Rover simulado estilo mouse: a direção pedida é na tela (x direita, y cima); ele gira até lá e anda.
-        self._pose = [0.0, 0.0, 0.0]     # x mm, y mm, rumo° (só a thread de leitura escreve)
+        self._lock = threading.Lock()    # a leitura (10 Hz) e o ticker de pose (30 Hz) integram o movimento
+        self._last_t = time.monotonic()
+        self._pose = [0.0, 0.0, 0.0]     # x mm, y mm, rumo°
         self._steer = (0.0, 0.0, 0.0)    # (x, y, velocidade 0..1): direção pedida na tela e quão rápido
         self._cmd_at = 0.0               # instante do último steer()
 
@@ -218,7 +221,8 @@ class Simulator(LidarSource):
             for _ in range(n):
                 d = dt / n
                 err = (math.degrees(math.atan2(sx, sy)) - h + 180.0) % 360.0 - 180.0   # [-180, 180)
-                step = max(-self.TURN_DEG_S * d, min(self.TURN_DEG_S * d, err))
+                rate = max(-self.TURN_DEG_S, min(self.TURN_DEG_S, err * self.TURN_GAIN))
+                step = max(-abs(err), min(abs(err), rate * d))          # nunca passa do alvo
                 h = (h + step) % 360.0
                 # Anda na direção em que a seta aponta; se ainda está virando muito, anda menos (ou nada).
                 v = mag * speed * self.SPEED_MM_S * d * max(0.0, math.cos(math.radians(err - step)))
@@ -226,6 +230,17 @@ class Simulator(LidarSource):
                 y += v * math.cos(math.radians(h))
                 x, y = push_out(self._scene, x, y, self.ROVER_RADIUS_MM)
         self._pose = [x, y, h]
+
+    def _integrate(self) -> tuple[float, float, float]:
+        """Avança o movimento até agora (relógio real) e devolve a pose. Seguro para duas threads."""
+        with self._lock:
+            now = time.monotonic()
+            self._advance(min(now - self._last_t, 0.25))
+            self._last_t = now
+            return tuple(self._pose)
+
+    def pose(self) -> tuple[float, float, float]:
+        return self._integrate() if self._scanning.is_set() else tuple(self._pose)
 
     def open(self, port: str) -> None:
         if port != self.PORT:
@@ -260,6 +275,7 @@ class Simulator(LidarSource):
         if self._health.status is HealthStatus.ERROR:     # como o driver: Protection Stop
             raise SourceError(f"sensor em Protection Stop (código de erro {self._health.error_code}) "
                               f"e o RESET não resolveu (simulado)")
+        self._last_t = time.monotonic()     # sem "dívida" de tempo da pausa anterior
         self._scanning.set()
 
     def stop_scan(self) -> None:
@@ -267,13 +283,11 @@ class Simulator(LidarSource):
 
     def scans(self) -> Iterator[Scan]:
         period = 1.0 / self.SCAN_HZ
-        deadline = last = time.monotonic()
+        deadline = time.monotonic()
         while self._scanning.is_set():
             self._raise_if_faulted()
-            now = time.monotonic()
-            self._advance(min(now - last, 0.25))
-            last = now
-            yield simulate_scan(self._scene, self._rng, pose=tuple(self._pose), **self._scan_kwargs)
+            pose = self._integrate()
+            yield simulate_scan(self._scene, self._rng, pose=pose, **self._scan_kwargs)
             deadline += period
             delay = deadline - time.monotonic()
             if delay > 0:

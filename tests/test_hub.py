@@ -307,3 +307,39 @@ def test_new_connection_starts_with_clean_inflight_state():
     got_a, got_b = asyncio.run(main())
     assert len(got_a) == 1
     assert len(got_b) == 1                              # b recebeu logo, sem herdar o bloqueio de a
+
+
+def test_pose_channel_is_latest_only_skips_ack_and_new_clients_get_current_pose():
+    from backend.hub import encode_pose
+
+    async def main():
+        hub = Hub(fps=5)
+        await hub.start()
+        got, gate = [], asyncio.Event()
+
+        async def send(msg):
+            got.append(json.loads(msg))
+            if got[-1]["type"] == "scan":
+                await gate.wait()                           # cliente travado no envio da varredura
+
+        hub.publish_pose((100.0, 200.0, 45.0))
+        ch = hub.add_client(send, flow_control=True)        # já recebe a pose atual
+        await asyncio.sleep(0.15)
+        hub.publish(make_frame(10))
+        await asyncio.sleep(0.3)                            # varredura enviada e SEM ack: o fluxo das varreduras trava
+        for i in range(60):
+            hub.publish_pose((100.0 + i, 200.0, 45.0))      # a pose continua chegando a ~30/s, uma por vez
+            await asyncio.sleep(0.01)
+        pending = ch._pose_msg is not None
+        hub.publish_pose((100.0 + 59, 200.0, 45.0))         # igual à anterior: não repete
+        gate.set()
+        await asyncio.sleep(0.2)
+        await hub.stop()
+        return got, pending
+
+    got, pending = asyncio.run(main())
+    poses = [m for m in got if m["type"] == "pose"]
+    assert poses[0]["pose"] == [100, 200, 45.0]
+    assert poses[-1]["pose"] == [159, 200, 45.0]            # a mais nova; nunca fila
+    assert len(poses) < 70                                  # no máximo uma mensagem por tick, sem acumular
+    assert encode_pose((1.4, -2.6, 33.33)) == '{"type":"pose","pose":[1,-3,33.3]}'

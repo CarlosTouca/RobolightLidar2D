@@ -20,8 +20,8 @@ import numpy as np
 import pytest
 import serial
 from fastapi.testclient import TestClient
-from websockets.sync.client import connect
 
+from tests.conftest import connect  # noqa: E402
 from backend.config import MAX_FPS
 from backend.hub import Hub
 from backend.main import create_app

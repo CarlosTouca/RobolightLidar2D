@@ -7,8 +7,8 @@ import time
 import httpx
 import pytest
 import uvicorn
-from websockets.sync.client import connect
 
+from tests.conftest import connect  # noqa: E402
 from backend.config import MAX_FPS
 from backend.main import create_app
 

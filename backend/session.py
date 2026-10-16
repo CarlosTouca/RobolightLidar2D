@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 
+from .config import POSE_FPS
 from .hub import Hub
 from .models import DeviceInfo, Health, Status
 from .pipeline import scan_to_frame
@@ -108,6 +110,9 @@ class Session:
                                             name="lidar-reader", daemon=True)
             self._state = "scanning"
             self._thread.start()
+            if self._source.pose() is not None:     # só o rover simulado: posição a ~30/s, à parte das varreduras
+                threading.Thread(target=self._pose_loop, args=(self._source, self._thread),
+                                 name="lidar-pose", daemon=True).start()
 
     def steer(self, x: float, y: float, speed: float) -> None:
         source = self._source          # sem lock: comando de alta frequência, não pode esperar um connect()
@@ -166,6 +171,13 @@ class Session:
                 self._state = "connected"
             self.last_points = 0
         self._hub.clear()      # sem varredura, ninguém recebe o último quadro "congelado"
+
+    def _pose_loop(self, source: LidarSource, reader: threading.Thread) -> None:
+        while self._thread is reader and self._state == "scanning":
+            pose = source.pose()
+            if pose is not None:
+                self._hub.publish_pose(pose)
+            time.sleep(1.0 / POSE_FPS)
 
     def _read_loop(self, source: LidarSource) -> None:
         error = ""

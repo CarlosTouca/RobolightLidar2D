@@ -105,7 +105,8 @@ export function createPlot(el, rangeM) {
   let world = { x: new Float32Array(0), y: new Float32Array(0) };   // metros, no mundo
   let pose = [0, 0, 0];                  // alvo: última pose recebida; sem pose (sensor real) fica na origem
   let from = pose, shown = pose;         // pose mostrada agora e de onde o deslize começou
-  let glideStart = 0, glideMs = 100, lastFrameAt = 0;
+  let havePose = false;                  // já veio alguma pose do servidor (rover simulado)?
+  let glideStart = 0, glideMs = 33, lastPoseAt = 0;
   let rotTarget = 0, rotShown = 0;       // rotação do mapa (graus, horário)
   let animating = false;
   let drawing = false;                   // Plotly.react em andamento: o deslize não compete com ele
@@ -158,21 +159,12 @@ export function createPlot(el, rangeM) {
   /** Desenha um quadro {x[], y[], q[], pose?} (mm). Sempre Plotly.react: o gráfico nunca é recriado.
    *  Os pontos vêm relativos ao sensor; com `pose` eles são levados ao mundo (mapa fixo, o sensor anda). */
   function update(frame, byQuality) {
-    const hadFrame = !!(last && last.frame);
     last = { frame, byQuality };
     if (frame) {
-      const now = performance.now();
-      pose = frame.pose || [0, 0, 0];                              // fonte sem pose (sensor real): origem
-      if (!hadFrame) { shown = from = pose; }
-      else {
-        // O deslize dura o tempo real entre quadros: sem sobra (seta parada) nem falta (seta atrasada).
-        glideMs = Math.min(400, Math.max(40, now - lastFrameAt));
-        from = shown;
-        glideStart = now;
-        kick();
-      }
-      lastFrameAt = now;
-      const [px, py, heading] = pose;
+      // Pontos: levados ao mundo com a pose DA VARREDURA. A seta usa a pose mais recente (setPose).
+      if (!frame.pose && havePose) { havePose = false; pose = shown = from = [0, 0, 0]; }   // fonte sem pose (sensor real)
+      else if (frame.pose && !havePose) setPose(frame.pose);                                // 1ª pose, se ainda não veio
+      const [px, py, heading] = frame.pose || [0, 0, 0];
       const c = Math.cos(heading * DEG), s = Math.sin(heading * DEG);
       const n = frame.x.length;
       world = { x: new Float32Array(n), y: new Float32Array(n) };
@@ -204,6 +196,21 @@ export function createPlot(el, rangeM) {
       .finally(() => { drawing = false; });
   }
 
+  /** Pose atual do rover (canal rápido, ~30/s): a seta desliza do ponto anterior a este pelo tempo real
+   *  entre mensagens, sem sobra (seta parada) nem falta (seta atrasada). */
+  function setPose(p) {
+    const now = performance.now();
+    if (!havePose) { pose = shown = from = p; havePose = true; }
+    else {
+      glideMs = Math.min(150, Math.max(15, now - lastPoseAt));
+      from = shown;
+      glideStart = now;
+      pose = p;
+    }
+    lastPoseAt = now;
+    kick();
+  }
+
   /** Novo alcance (±m): refaz anéis/eixos e redefine o enquadramento. */
   function setRange(m) {
     rangeM = m;
@@ -220,5 +227,5 @@ export function createPlot(el, rangeM) {
     kick();
   }
 
-  return { update, setRange, setRotation };
+  return { update, setRange, setRotation, setPose };
 }

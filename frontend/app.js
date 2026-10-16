@@ -55,6 +55,7 @@ function connect() {
   sock.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === 'pose') { plot.setPose(msg.pose); return; }   // posição do rover, sem ack
     if (msg.type !== 'scan') return;
     dbg.received++;
     if (serverState !== 'scanning') {   // chegou após parar/desconectar: não desenhar

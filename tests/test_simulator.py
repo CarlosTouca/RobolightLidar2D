@@ -157,14 +157,22 @@ def test_pose_changes_view_and_rover_drives():
     sim.steer(0, 1, 1.0)                                   # "cima" na tela, a seta já aponta para cima
     sim._advance(1.0)
     assert sim._pose[:2] == pytest.approx([0, Simulator.SPEED_MM_S]) and sim._pose[2] == 0
-    sim.steer(1, 0, 1.0)                                   # "direita": a seta gira até 90° (horário)
-    sim._advance(90 / Simulator.TURN_DEG_S)
-    assert sim._pose[2] == pytest.approx(90)
-    sim.steer(-1, 0, 1.0)                                  # "esquerda": gira para 270° pelo caminho mais curto
-    sim._advance(90 / Simulator.TURN_DEG_S)
-    assert sim._pose[2] == pytest.approx(0)                # 90 -> 0 (180° de erro, só 90° de giro neste passo)
-    sim._advance(90 / Simulator.TURN_DEG_S)
-    assert sim._pose[2] == pytest.approx(270)
+    def run(seconds: float, step: float = 0.05):
+        for _ in range(round(seconds / step)):
+            sim.steer(*_dir, 1.0)                                   # o comando se renova, como o heartbeat do navegador
+            sim._advance(step)
+
+    _dir = (1, 0)                                          # "direita": a seta gira até 90° (horário), sem passar do alvo
+    headings = []
+    for _ in range(30):
+        sim.steer(*_dir, 1.0)
+        sim._advance(0.05)
+        headings.append(sim._pose[2])
+    assert headings == sorted(headings) and headings[-1] <= 90 + 1e-9 and headings[-1] == pytest.approx(90, abs=1.0)
+    assert max(b - a for a, b in zip(headings, headings[1:])) <= Simulator.TURN_DEG_S * 0.05 + 1e-9   # nunca mais rápido que o máximo
+    _dir = (-1, 0)                                         # "esquerda": 180° de erro, vai pelo caminho mais curto
+    run(2.0)
+    assert sim._pose[2] == pytest.approx(270, abs=1.0)
     sim.steer(1, 0, 1.0)
     for _ in range(100):
         sim.steer(1, 0, 1.0)
@@ -237,3 +245,16 @@ def test_rover_does_not_tunnel_through_a_wall_after_a_long_pause():
     sim.steer(0, 1, 1.0)
     sim._advance(1.5)                           # um passo enorme: sem sub-passos atravessaria a parede em y = 3000
     assert sim._pose[1] == pytest.approx(3000 - Simulator.ROVER_RADIUS_MM)
+
+
+def test_pose_is_integrated_by_wall_clock_from_any_thread():
+    sim = Simulator(scene=Scene(segments=ROOM), seed=0, **CLEAN)
+    sim.open("SIMULADOR")
+    sim.start_scan()
+    sim.steer(0, 1, 1.0)
+    time.sleep(0.3)
+    p1 = sim.pose()                                        # o ticker de pose (30 Hz) integra sem esperar uma varredura
+    time.sleep(0.2)
+    p2 = sim.pose()
+    assert p2[1] > p1[1] > 0 and p2[1] - p1[1] == pytest.approx(0.2 * Simulator.SPEED_MM_S, rel=0.35)
+    sim.close()

@@ -5,7 +5,7 @@
 // em movimento: o servidor para o rover sozinho se os comandos deixarem de chegar.
 import { api } from './api.js';
 
-const DEADZONE = 0.3;
+const DEADZONE = 0.2;
 const ROT_DEADZONE = 0.2;
 const ROT_DEG_S = 90;       // giro do mapa com o analógico direito todo para o lado
 const HEARTBEAT_MS = 200;
@@ -48,7 +48,11 @@ export function initGamepad(plot) {
     const now = performance.now();
     if (pad) {
       const ax = pad.axes[0] || 0, ay = -(pad.axes[1] || 0);       // eixo Y do controle: para cima é negativo
-      if (Math.hypot(ax, ay) > DEADZONE) { x = ax; y = ay; }       // analógico: o módulo vira a intensidade
+      const m = Math.hypot(ax, ay);
+      if (m > DEADZONE) {                                          // analógico: a intensidade cresce a partir da zona morta
+        const k = Math.min(1, (m - DEADZONE) / (1 - DEADZONE)) / m;
+        x = ax * k; y = ay * k;
+      }
       else {
         const [hx, hy] = pad.mapping === 'standard' ? [0, 0] : hat(pad.axes[HAT_AXIS]);
         x = pressed(pad, 15) - pressed(pad, 14) + hx;               // D-pad: direita - esquerda
