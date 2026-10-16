@@ -118,8 +118,12 @@ export function createPlot(el, rangeM) {
   // e faziam o movimento travar. Assim ele anda na taxa da tela, sem depender do que o Plotly está fazendo.
   // O canvas é irmão do gráfico (não filho): nada dele pode afetar o tamanho que o Plotly mede.
   const cv = document.createElement('canvas');
-  cv.style.cssText = 'position:absolute;pointer-events:none';
+  // `contain` + `overflow: hidden` no pai: o canvas NUNCA aumenta a área rolável da página. Sem isso, com escala de tela
+  // fracionada (125%) o canvas passava 1 px do gráfico, surgia barra de rolagem, o gráfico encolhia, a barra sumia, e assim
+  // em laço: o mapa aumentava e diminuía sem parar.
+  cv.style.cssText = 'position:absolute;pointer-events:none;contain:strict;max-width:100%;max-height:100%';
   el.parentNode.style.position = 'relative';
+  el.parentNode.style.overflow = 'hidden';
   let lastSize = '', lastZoom = '', sizeChanges = 0, zoomChanges = 0;   // painel "Tela": o gráfico mudou de tamanho ou de zoom?
   let colors = null;
   const readColors = () => ({ body: css('--sensor'), nose: css('--warn'), line: css('--fg'), dot: css('--bar-bg') });
@@ -129,7 +133,8 @@ export function createPlot(el, rangeM) {
     const xa = fl && fl.xaxis, ya = fl && fl.yaxis;
     if (!xa || !ya || !xa._length) return;                          // gráfico ainda não desenhado
     if (cv.parentNode !== el.parentNode) el.parentNode.insertBefore(cv, el.nextSibling);
-    const w = el.clientWidth, h = el.clientHeight, dpr = window.devicePixelRatio || 1;
+    const box = el.getBoundingClientRect();                         // medida fracionada: clientWidth arredonda para cima
+    const w = Math.floor(box.width), h = Math.floor(box.height), dpr = window.devicePixelRatio || 1;
     const size = `${w}×${h}`, zoom = (Math.abs(xa.range[1] - xa.range[0]) / 2).toFixed(2);
     if (lastSize && size !== lastSize) sizeChanges++;
     if (lastZoom && zoom !== lastZoom) zoomChanges++;
