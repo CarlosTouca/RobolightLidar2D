@@ -71,7 +71,7 @@ function buildLayout(rangeM, revision) {
   };
 }
 
-// pose = [x mm, y mm, rumo°] do sensor no mundo; o triângulo aponta para onde o sensor olha.
+// pose = [x mm, y mm, rumo°] do sensor no mundo; a seta aponta para onde o sensor olha.
 function sensorTrace([px, py, heading]) {
   return {
     type: 'scatter', // um único ponto: trace separado dos pontos medidos
@@ -79,7 +79,8 @@ function sensorTrace([px, py, heading]) {
     x: [px / 1000], y: [py / 1000],
     name: 'Sensor',
     hovertemplate: 'Sensor (%{x:.2f}, %{y:.2f}) m<extra></extra>',
-    marker: { symbol: 'triangle-up', size: 13, angle: heading, color: css('--sensor'),
+    // Ponta de seta (como um cursor): a ponta mostra para onde o sensor olha (0° = +Y, horário).
+    marker: { symbol: 'arrow', size: 30, angle: heading, color: css('--sensor'),
               line: { color: css('--fg'), width: 1 } },
   };
 }

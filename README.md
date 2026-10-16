@@ -68,7 +68,7 @@ X/O param enquanto apertados, L1/R1 mudam a velocidade, e o comando é repetido 
 por 0,8 s o rover para (como o firmware).
 
 Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico passa a mostrar o **mapa fixo**:
-a sala fica parada e o triângulo do sensor anda e gira. Com o sensor real não há `pose` e o sensor fica
+a sala fica parada e a seta do sensor anda e gira. Com o sensor real não há `pose` e o sensor fica
 na origem, como antes. Só as paredes da sala bloqueiam o rover; o driver real ignora `/api/drive`.
 
 ## Arquitetura e regras de desenvolvimento

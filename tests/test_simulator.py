@@ -155,9 +155,9 @@ def test_pose_changes_view_and_rover_drives():
     sim.open("SIMULADOR")
     sim.drive(1, 1)
     sim._advance(1.0)
-    assert sim._pose[:2] == pytest.approx([0, 500]) and sim._pose[2] == 0
+    assert sim._pose[:2] == pytest.approx([0, Simulator.SPEED_MM_S]) and sim._pose[2] == 0
     sim.drive(1, -1)                      # esquerda p/ frente, direita p/ trás = giro horário
-    sim._advance(1.0)
+    sim._advance(90 / Simulator.TURN_DEG_S)   # tempo de girar 90°
     assert sim._pose[2] == pytest.approx(90)
     sim.drive(1, 1)
     for _ in range(100):

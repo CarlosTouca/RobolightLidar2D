@@ -124,8 +124,8 @@ class Simulator(LidarSource):
     name = "simulator"
     PORT = "SIMULADOR"
     SCAN_HZ = 10.0   # o C1 gira a ~10 Hz
-    SPEED_MM_S = 500.0   # velocidade do rover simulado com os dois lados a 100 %
-    TURN_DEG_S = 90.0    # giro sobre o próprio eixo (lados opostos a 100 %)
+    SPEED_MM_S = 1500.0  # velocidade do rover simulado com os dois lados a 100 % (escolha de visualização)
+    TURN_DEG_S = 180.0   # giro sobre o próprio eixo (lados opostos a 100 %)
     MARGIN_MM = 300.0    # folga mínima até as paredes
     DRIVE_TIMEOUT_S = 0.8   # sem novo comando por este tempo, o rover para (igual ao firmware)
 
