@@ -31,8 +31,13 @@ class LidarSource(ABC):
         """Pacotes inválidos descartados desde que a fonte foi aberta (0 se não se aplica)."""
         return 0
 
-    def drive(self, left: float, right: float) -> None:
-        """Comando do rover simulado: velocidade de cada lado, -1..1. Fontes reais ignoram."""
+    def steer(self, x: float, y: float, speed: float) -> None:
+        """Comando do rover simulado: direção desejada na tela (x direita, y cima, módulo até 1) e
+        velocidade 0..1. Fontes reais ignoram."""
+
+    def pose(self) -> tuple[float, float, float] | None:
+        """Posição atual do sensor no mundo (x mm, y mm, rumo°); só o rover simulado informa."""
+        return None
 
     @abstractmethod
     def get_info(self) -> DeviceInfo: ...

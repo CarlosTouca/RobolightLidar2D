@@ -27,6 +27,8 @@ with connect(args.url) as ws:
     try:
         while not args.seconds or time.monotonic() - start < args.seconds:
             msg = json.loads(ws.recv())
+            if msg.get("type") != "scan":     # a pose do rover (~30/s) vai por outro canal
+                continue
             n += 1
             if last_seq is not None:
                 skipped += msg["seq"] - last_seq - 1

@@ -13,6 +13,11 @@ from enum import Enum
 
 import numpy as np
 
+# (x mm, y mm, rumo°): onde o sensor está no mundo e para onde aponta. Os pontos de Scan/Frame
+# continuam relativos ao sensor; quem desenha usa a pose para colocá-los no mundo.
+# Rumo na convenção do projeto (0° = +Y, horário).
+Pose = tuple[float, float, float]
+
 
 @dataclass
 class Scan:
@@ -20,6 +25,7 @@ class Scan:
     angle_deg: np.ndarray    # float, [0, 360)
     distance_mm: np.ndarray  # float, 0 = medida inválida
     quality: np.ndarray      # int, 0 = inválida (modo Standard: 0..63)
+    pose: Pose | None = None  # só o simulador (rover simulado); o sensor real não informa
 
     def __post_init__(self) -> None:
         if not (len(self.angle_deg) == len(self.distance_mm) == len(self.quality)):
@@ -32,6 +38,7 @@ class Frame:
     x: list[int]  # mm
     y: list[int]  # mm
     q: list[int]  # qualidade, usada para colorir
+    pose: Pose | None = None  # posição do sensor no mundo (só o rover simulado informa)
 
 
 class HealthStatus(str, Enum):

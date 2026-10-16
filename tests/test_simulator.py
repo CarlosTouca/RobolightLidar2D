@@ -7,7 +7,8 @@ import pytest
 from backend.pipeline import scan_to_frame
 from backend.sources.base import SourceError
 from backend.sources.simulator import (
-    Scene, Simulator, default_scene, raycast, rect_segments, simulate_scan, u_shape,
+    Scene, Simulator, default_scene, house_scene, push_out, raycast, rect_segments, simulate_scan,
+    u_shape, wall,
 )
 
 CLEAN = dict(noise_mm=0.0, angle_jitter_deg=0.0, dropout=0.0)
@@ -151,24 +152,109 @@ def test_pose_changes_view_and_rover_drives():
     # Rumo 90° (olhando para +X): a frente do sensor enxerga a parede da direita (3500 mm).
     assert simulate_scan(scene, rng, **CLEAN, pose=(0, 0, 90)).distance_mm[0] == pytest.approx(3500)
 
-    sim = Simulator(seed=0, **CLEAN)
+    sim = Simulator(scene=Scene(segments=ROOM), seed=0, **CLEAN)
     sim.open("SIMULADOR")
-    sim.drive(1, 1)
+    sim.steer(0, 1, 1.0)                                   # "cima" na tela, o rover já aponta para cima
     sim._advance(1.0)
-    assert sim._pose[:2] == pytest.approx([0, 500]) and sim._pose[2] == 0
-    sim.drive(1, -1)                      # esquerda p/ frente, direita p/ trás = giro horário
-    sim._advance(1.0)
-    assert sim._pose[2] == pytest.approx(90)
-    sim.drive(1, 1)
+    assert sim._pose[:2] == pytest.approx([0, Simulator.SPEED_MM_S]) and sim._pose[2] == 0
+    def run(seconds: float, step: float = 0.05):
+        for _ in range(round(seconds / step)):
+            sim.steer(*_dir, 1.0)                                   # o comando se renova, como o heartbeat do navegador
+            sim._advance(step)
+
+    _dir = (1, 0)                                          # "direita": o rover gira até 90° (horário), sem passar do alvo
+    headings = []
+    for _ in range(30):
+        sim.steer(*_dir, 1.0)
+        sim._advance(0.05)
+        headings.append(sim._pose[2])
+    assert headings == sorted(headings) and headings[-1] <= 90 + 1e-9 and headings[-1] == pytest.approx(90, abs=1.0)
+    assert max(b - a for a, b in zip(headings, headings[1:])) <= Simulator.TURN_DEG_S * 0.05 + 1e-9   # nunca mais rápido que o máximo
+    _dir = (-1, 0)                                         # "esquerda": 180° de erro, vai pelo caminho mais curto
+    run(2.0)
+    assert sim._pose[2] == pytest.approx(270, abs=1.0)
+    sim.steer(1, 0, 1.0)
     for _ in range(100):
-        sim._advance(1.0)                 # para na parede (folga de 300 mm), nunca a atravessa
-    assert sim._pose[0] == pytest.approx(3500 - Simulator.MARGIN_MM)
+        sim.steer(1, 0, 1.0)
+        sim._advance(1.0)                                  # para na parede (folga de 300 mm), nunca a atravessa
+    assert sim._pose[0] == pytest.approx(3500 - Simulator.ROVER_RADIUS_MM)
 
 
 def test_rover_stops_when_commands_stop_arriving():
     sim = Simulator(seed=0, **CLEAN)
     sim.open("SIMULADOR")
-    sim.drive(1, 1)
+    sim.steer(0, 1, 1.0)
     sim._cmd_at -= Simulator.DRIVE_TIMEOUT_S + 0.1      # o último comando ficou velho
     sim._advance(1.0)
     assert sim._pose == [0.0, 0.0, 0.0]
+
+
+def test_scan_pose_puts_points_back_on_the_fixed_room():
+    # Com a pose, a rotação+translação do plot.js leva os pontos de volta às paredes fixas da sala.
+    scene = Scene(segments=ROOM)
+    pose = (500.0, -300.0, 37.0)
+    frame = scan_to_frame(simulate_scan(scene, np.random.default_rng(0), **CLEAN, pose=pose))
+    assert frame.pose == pose
+    px, py, h = pose
+    c, s = math.cos(math.radians(h)), math.sin(math.radians(h))
+    for x, y in zip(frame.x, frame.y):
+        wx, wy = px + x * c + y * s, py - x * s + y * c   # mesma fórmula de frontend/plot.js
+        assert min(abs(wx + 2500), abs(wx - 3500), abs(wy + 2000), abs(wy - 3000)) < 3
+
+
+def test_encode_scan_sends_pose_only_when_present():
+    import json
+    from backend.hub import encode_scan
+    from backend.models import Frame
+    assert "pose" not in json.loads(encode_scan(1, 0.0, Frame(x=[1], y=[2], q=[3])))
+    msg = json.loads(encode_scan(1, 0.0, Frame(x=[1], y=[2], q=[3], pose=(10.4, -20.6, 33.33))))
+    assert msg["pose"] == [10, -21, 33.3]
+
+
+def test_wall_with_door_gaps():
+    segs = wall((0, 100), (1000, 100), ((200, 300), (600, 700)))          # horizontal, duas portas
+    assert segs == [((0, 100), (200, 100)), ((300, 100), (600, 100)), ((700, 100), (1000, 100))]
+    assert wall((50, 0), (50, 500), ((100, 200),)) == [((50, 0), (50, 100)), ((50, 200), (50, 500))]   # vertical
+
+
+def test_house_is_closed_and_start_is_free():
+    scene = house_scene()
+    d = raycast(scene, np.arange(0.0, 360.0, 1.0))
+    assert np.all(np.isfinite(d))                                          # sem buracos: todo raio bate em algo
+    assert push_out(scene, 0, 0, Simulator.ROVER_RADIUS_MM) == (0, 0)      # o rover começa em espaço livre
+
+
+def test_rover_is_blocked_by_house_walls_but_goes_through_doors():
+    sim = Simulator(seed=0, **CLEAN)
+    sim.open("SIMULADOR")
+    for _ in range(60):
+        sim.steer(0, 1, 1.0)                    # de (0, 0) para cima: bate na parede do corredor (y = 1000)
+        sim._advance(0.1)
+    assert sim._pose[1] == pytest.approx(1000 - Simulator.ROVER_RADIUS_MM)
+    sim._pose = [1500.0, 0.0, 0.0]              # em x = 1500 há uma abertura de 1,4 m na parede
+    for _ in range(60):
+        sim.steer(0, 1, 1.0)
+        sim._advance(0.1)
+    assert sim._pose[1] > 2400                  # atravessou o corredor e a porta do quarto 2
+
+
+def test_rover_does_not_tunnel_through_a_wall_after_a_long_pause():
+    sim = Simulator(scene=Scene(segments=ROOM), seed=0, **CLEAN)
+    sim.open("SIMULADOR")
+    sim._pose = [0.0, 2000.0, 0.0]
+    sim.steer(0, 1, 1.0)
+    sim._advance(1.5)                           # um passo enorme: sem sub-passos atravessaria a parede em y = 3000
+    assert sim._pose[1] == pytest.approx(3000 - Simulator.ROVER_RADIUS_MM)
+
+
+def test_pose_is_integrated_by_wall_clock_from_any_thread():
+    sim = Simulator(scene=Scene(segments=ROOM), seed=0, **CLEAN)
+    sim.open("SIMULADOR")
+    sim.start_scan()
+    sim.steer(0, 1, 1.0)
+    time.sleep(0.3)
+    p1 = sim.pose()                                        # o ticker de pose (60 Hz) integra sem esperar uma varredura
+    time.sleep(0.2)
+    p2 = sim.pose()
+    assert p2[1] > p1[1] > 0 and p2[1] - p1[1] == pytest.approx(0.2 * Simulator.SPEED_MM_S, rel=0.35)
+    sim.close()

@@ -35,5 +35,5 @@ export const api = {
   disconnect: () => request('POST', '/api/disconnect'),
   start: () => request('POST', '/api/scan/start'),
   stop: () => request('POST', '/api/scan/stop'),
-  drive: (left, right) => request('POST', '/api/drive', { left, right }),
+  steer: (x, y, speed) => request('POST', '/api/steer', { x, y, speed }),
 };

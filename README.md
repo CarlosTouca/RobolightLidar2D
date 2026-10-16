@@ -60,10 +60,20 @@ API de controle (JSON): `GET /api/config|ports|status`, `POST /api/connect {"por
 `/api/disconnect`, `/api/scan/start`, `/api/scan/stop`. Transição inválida -> 409, falha da fonte
 -> 502, ambos como `{"error": {"code", "message"}}` (ver `backend/api.py`).
 
-**Rover simulado com joystick.** Com a fonte SIMULADOR, `POST /api/drive {"left": -1..1, "right": -1..1}`
-move o sensor pela sala (tração diferencial); `frontend/gamepad.js` lê um controle (Gamepad API: analógico
-esquerdo ou D-pad, X/O para parar) e envia esse comando. Só as paredes da sala bloqueiam o rover; o
-driver real ignora o comando.
+**Rover simulado com joystick (estilo mouse).** Com a fonte SIMULADOR, `POST /api/steer {"x": -1..1, "y": -1..1,
+"speed": 0..255}` pede uma direção **na tela** (x para a direita, y para cima): o rover gira até lá e anda. `frontend/gamepad.js` lê um controle (Gamepad API): analógico esquerdo (módulo = intensidade)
+ou D-pad dão a direção, o **analógico direito gira o mapa** na tela (R3 volta a 0°; "cima" continua sendo cima
+na tela girada), X/O param enquanto apertados e L1/R1 mudam a velocidade; o comando é repetido a cada 200 ms
+e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
+do firmware, onde esquerda/direita giram no lugar): é só uma forma intuitiva de explorar o mapa.
+
+Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico mostra o **mapa fixo**: a sala
+fica parada e o rover (desenhado de cima, com o LiDAR no centro) anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
+antes. O simulador é uma **casa** de 10 x 8 m (`house_scene()`: sala, cozinha, corredor, dois quartos e banheiro, com
+portas e móveis); o rover é um disco de 25 cm de raio que paredes e móveis bloqueiam. O driver real ignora
+`/api/steer`. A posição do rover também sai a ~60/s por um canal à parte (`{"type": "pose"}`, sem ack, só a mais nova; `POSE_FPS`),
+e o rover é desenhado num canvas por cima do gráfico (fora do Plotly, na taxa da tela), deslizando entre as mensagens (`frontend/plot.js`); o rover gira com velocidade
+proporcional ao erro (suave nos ajustes finos, no máximo 200°/s).
 
 ## Arquitetura e regras de desenvolvimento
 
@@ -72,7 +82,7 @@ Escopo: nuvem de pontos 2D ao vivo, vista de cima, sensor na origem, mais o pain
 modos de varredura além do Standard e controle de velocidade do motor.
 
 ```
-Fonte (thread) → pipeline (filtra q=0/d=0, polar→x,y,q) → Hub (1 quadro) → 5 Hz → WebSocket → Plotly
+Fonte (thread) → pipeline (filtra q=0/d=0, polar→x,y,q) → Hub (1 quadro) → 10 Hz → WebSocket → Plotly
 ```
 - `backend/sources/`: contrato `LidarSource` (`base.py`), `simulator.py`, `rplidar_c1.py` (+ `rplidar_protocol.py`,
   parser puro) e `factory.py` (porta `SIMULADOR` → simulador, `COMx` → driver). **Só `sources/` importa pyserial.**
@@ -80,7 +90,7 @@ Fonte (thread) → pipeline (filtra q=0/d=0, polar→x,y,q) → Hub (1 quadro) �
   `backend/api.py` (REST + `/ws`), `backend/main.py`, `frontend/` (HTML/JS sem build).
 
 Regras que não devem ser quebradas:
-1. No máximo **5 quadros/s** (`MAX_FPS`); o excesso é descartado, nunca enfileirado.
+1. No máximo **10 quadros/s** (`MAX_FPS`, o ritmo do C1); o excesso é descartado, nunca enfileirado.
 2. **Fila de tamanho 1**: o hub guarda só o último quadro e cada cliente tem um único slot.
 3. **Ack obrigatório**: o cliente envia `String(seq)` depois de DESENHAR (dentro de um `finally`); o servidor
    mantém no máximo 1 varredura sem ack em trânsito e libera outra após 2 s sem ack.

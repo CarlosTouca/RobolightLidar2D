@@ -8,7 +8,7 @@ REST (JSON). Erros têm sempre o formato {"error": {"code": "...", "message": ".
   POST /api/disconnect
   POST /api/scan/start
   POST /api/scan/stop
-  POST /api/drive         {"left": -1..1, "right": -1..1}  rover simulado (só o SIMULADOR reage)
+  POST /api/steer         {"x": -1..1, "y": -1..1, "speed": 0..255}  rover simulado (direção na tela)
   409 transição inválida (ex.: iniciar varredura sem conectar) | 502 falha da fonte
 
 WebSocket /ws: o cliente envia, a cada varredura desenhada, o seu `seq` como texto
@@ -52,14 +52,15 @@ class ConnectBody(BaseModel):
     port: str
 
 
-class DriveBody(BaseModel):
-    left: float = Field(ge=-1, le=1)
-    right: float = Field(ge=-1, le=1)
+class SteerBody(BaseModel):
+    x: float = Field(ge=-1, le=1)       # direita
+    y: float = Field(ge=-1, le=1)       # cima
+    speed: int = Field(150, ge=0, le=255)
 
 
-@router.post("/api/drive")
-def drive(body: DriveBody, request: Request) -> dict:
-    _session(request).drive(body.left, body.right)
+@router.post("/api/steer")
+def steer(body: SteerBody, request: Request) -> dict:
+    _session(request).steer(body.x, body.y, body.speed / 255)
     return {"ok": True}
 
 

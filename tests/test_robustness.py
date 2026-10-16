@@ -20,8 +20,9 @@ import numpy as np
 import pytest
 import serial
 from fastapi.testclient import TestClient
-from websockets.sync.client import connect
 
+from tests.conftest import connect  # noqa: E402
+from backend.config import MAX_FPS
 from backend.hub import Hub
 from backend.main import create_app
 from backend.models import Health, HealthStatus
@@ -329,7 +330,7 @@ def test_many_clients_one_never_acks_does_not_affect_the_others(live_server):
     for t in threads:
         t.join()
     fast = [counts[i] for i in range(1, 25)]
-    assert min(fast) >= 8 and max(fast) <= 5 * 2.6 + 2     # ~5/s cada, nenhum passa do limite
+    assert min(fast) >= 8 and max(fast) <= MAX_FPS * 2.6 + 2     # ~MAX_FPS/s cada, nenhum passa do limite
     assert counts[0] <= 3                                   # sem ack: só o gotejamento do timeout (2 s)
     assert wait_until(lambda: hub.client_count == 0)
 

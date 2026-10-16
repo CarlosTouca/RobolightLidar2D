@@ -3,7 +3,8 @@ import os
 
 BAUDRATE = 460800                      # RPLIDAR C1
 ACK_TIMEOUT_S = 2.0                    # sem ack por este tempo, o servidor libera novo envio
-MAX_FPS = 5                            # limite de envio ao navegador
+POSE_FPS = 60                           # posição do rover simulado (canal à parte, sem ack)
+MAX_FPS = 10                           # limite de envio ao navegador (o C1 gira a ~10 Hz)
 HOST = os.getenv("LIDAR_HOST", "127.0.0.1")
 PORT = int(os.getenv("LIDAR_PORT", "8000"))
 DEFAULT_RANGE_M = float(os.getenv("LIDAR_RANGE_M", "6"))   # eixos ±N metros

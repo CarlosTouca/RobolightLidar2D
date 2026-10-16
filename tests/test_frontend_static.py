@@ -17,6 +17,7 @@ def test_served_by_backend_including_local_plotly():
         assert r.status_code == 200 and "Lidar 2D" in r.text
         for path in ("/app.js", "/plot.js", "/style.css", "/vendor/plotly-gl2d.min.js"):
             assert c.get(path).status_code == 200, path
+        assert c.get("/app.js").headers["cache-control"] == "no-cache"   # nunca JS velho em cache
 
 
 def test_no_cdn_or_external_resources():
@@ -54,7 +55,7 @@ def test_ack_is_sent_in_finally_block():
 def test_panel_has_required_controls():
     for id_ in ("port", "btn-refresh", "btn-connect", "btn-disconnect", "btn-start", "btn-stop",
                 "st-state", "st-model", "st-firmware", "st-serial", "st-health", "st-errors", "port-desc", "error",
-                "range", "btn-range", "color-q", "fps", "points"):
+                "range", "btn-range", "color-q", "fps", "points", "pad-info", "view-info"):
         assert f'id="{id_}"' in HTML, id_
     assert 'role="alert"' in HTML                 # erros visíveis e anunciados, não só no console
     panel = JS["panel.js"]

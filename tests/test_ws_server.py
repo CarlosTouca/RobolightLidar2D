@@ -7,8 +7,9 @@ import time
 import httpx
 import pytest
 import uvicorn
-from websockets.sync.client import connect
 
+from tests.conftest import connect  # noqa: E402
+from backend.config import MAX_FPS
 from backend.main import create_app
 
 
@@ -45,11 +46,12 @@ def test_websocket_stream_rate_and_format(server):
             ws.send(str(msgs[-1]["seq"]))               # ack
         elapsed = time.monotonic() - t0
 
-    assert 5 * elapsed * 0.6 <= len(msgs) <= 5 * elapsed + 1      # ~5/s; o simulador produz 10/s
+    assert MAX_FPS * elapsed * 0.6 <= len(msgs) <= MAX_FPS * elapsed + 1      # ~MAX_FPS/s
     seqs = [m["seq"] for m in msgs]
     assert all(b > a for a, b in zip(seqs, seqs[1:]))
     m = msgs[0]
-    assert set(m) == {"type", "seq", "t", "x", "y", "q"}
+    assert set(m) == {"type", "seq", "t", "x", "y", "q", "pose"}   # pose: só o simulador envia
+    assert len(m["pose"]) == 3
     assert len(m["x"]) == len(m["y"]) == len(m["q"]) > 100
     assert all(type(v) is int for v in m["x"] + m["y"] + m["q"])  # inteiros, sem objetos por ponto
     assert min(m["q"]) > 0                                          # q=0 descartado no backend

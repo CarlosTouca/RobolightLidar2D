@@ -53,6 +53,65 @@ def default_scene() -> Scene:
     return Scene(segments=segs, circles=[(1200.0, 1500.0, 300.0)])
 
 
+def wall(p0: tuple[float, float], p1: tuple[float, float],
+         gaps: tuple[tuple[float, float], ...] = ()) -> list[Segment]:
+    """Parede reta (horizontal ou vertical) de p0 a p1, com vãos de porta `gaps` = ((a, b), ...)
+    medidos ao longo do eixo da parede (x numa parede horizontal, y numa vertical)."""
+    horizontal = p0[1] == p1[1]
+    a0, a1 = (p0[0], p1[0]) if horizontal else (p0[1], p1[1])
+    cuts = [a0] + [v for gap in sorted(gaps) for v in gap] + [a1]
+    return [((s, p0[1]), (e, p0[1])) if horizontal else ((p0[0], s), (p0[0], e))
+            for s, e in zip(cuts[::2], cuts[1::2])]
+
+
+def house_scene() -> Scene:
+    """Casa de 10 x 8 m: sala e cozinha embaixo, corredor no meio, dois quartos e um banheiro em cima,
+    com portas de 0,7 a 1,4 m e alguns móveis. O rover começa na sala, em (0, 0)."""
+    s: list[Segment] = []
+    s += rect_segments(-4000, -3000, 6000, 5000)                                  # paredes externas
+    s += wall((-4000, 1000), (6000, 1000), ((-2800, -2000), (800, 2200)))         # corredor | cozinha e sala
+    s += wall((-4000, 2400), (6000, 2400), ((-2800, -2000), (1000, 1800), (4300, 5000)))  # corredor | quartos e banheiro
+    s += wall((-500, -3000), (-500, 1000), ((-1800, -800),))                      # cozinha | sala
+    s += wall((0, 2400), (0, 5000))                                               # quarto 1 | quarto 2
+    s += wall((3500, 2400), (3500, 5000))                                         # quarto 2 | banheiro
+    for box in ((2600, -2800, 4600, -2100),      # sofá
+                (1200, -1700, 2400, -900),       # mesa de centro
+                (5600, -2000, 5900, 0),          # móvel da TV
+                (-3900, -2900, -1000, -2300),    # bancada da cozinha
+                (-3900, 3500, -2200, 4900),      # cama do quarto 1
+                (-600, 3000, -50, 4800),         # guarda-roupa
+                (200, 3600, 1800, 4900),         # cama do quarto 2
+                (2500, 4400, 3400, 4900),        # escrivaninha
+                (3650, 4200, 5900, 4900)):       # banheira
+        s += rect_segments(*box)
+    return Scene(segments=s, circles=[(-2000.0, -1200.0, 350.0), (3800.0, 3000.0, 150.0)])  # ilha, pia
+
+
+def push_out(scene: Scene, x: float, y: float, radius: float) -> tuple[float, float]:
+    """Afasta um disco de `radius` mm centrado em (x, y) das paredes e dos círculos da cena."""
+    for _ in range(3):                           # alguns cantos exigem mais de uma correção
+        moved = False
+        for (ax, ay), (bx, by) in scene.segments:
+            ex, ey = bx - ax, by - ay
+            t = max(0.0, min(1.0, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey)))
+            dx, dy = x - (ax + t * ex), y - (ay + t * ey)
+            d = math.hypot(dx, dy)
+            if d < radius:
+                if d == 0:                       # exatamente sobre a parede: qualquer normal serve
+                    dx, dy, d = -ey, ex, math.hypot(ex, ey)
+                x, y, moved = x + dx / d * (radius - d), y + dy / d * (radius - d), True
+        for cx, cy, r in scene.circles:
+            dx, dy = x - cx, y - cy
+            d = math.hypot(dx, dy)
+            if d < r + radius:
+                if d == 0:
+                    dx, d = 1.0, 1.0
+                x, y, moved = x + dx / d * (r + radius - d), y + dy / d * (r + radius - d), True
+        if not moved:
+            break
+    return x, y
+
+
 def raycast(scene: Scene, angles_deg: np.ndarray) -> np.ndarray:
     """Distância (mm) do primeiro obstáculo em cada ângulo; inf se nada for atingido."""
     th = np.deg2rad(angles_deg)
@@ -117,58 +176,77 @@ def simulate_scan(scene: Scene, rng: np.random.Generator, n: int = 500,
         invalid |= rng.random(n) < dropout
     d = np.where(invalid, 0.0, d)
     q = np.where(invalid, 0, q).astype(np.int64)
-    return Scan(angle_deg=angles, distance_mm=d, quality=q)
+    return Scan(angle_deg=angles, distance_mm=d, quality=q, pose=pose)
 
 
 class Simulator(LidarSource):
     name = "simulator"
     PORT = "SIMULADOR"
     SCAN_HZ = 10.0   # o C1 gira a ~10 Hz
-    SPEED_MM_S = 500.0   # velocidade do rover simulado com os dois lados a 100 %
-    TURN_DEG_S = 90.0    # giro sobre o próprio eixo (lados opostos a 100 %)
-    MARGIN_MM = 300.0    # folga mínima até as paredes
-    DRIVE_TIMEOUT_S = 0.5   # sem novo comando por este tempo, o rover para
+    SPEED_MM_S = 1500.0  # velocidade do rover simulado a 100 % (escolha de visualização)
+    TURN_DEG_S = 200.0   # giro máximo do rover (°/s)
+    TURN_GAIN = 6.0      # o giro é proporcional ao erro (1/s): suave nos ajustes finos, até o máximo nas viradas grandes
+    ROVER_RADIUS_MM = 250.0   # o rover é um disco: paredes e móveis o bloqueiam
+    DRIVE_TIMEOUT_S = 0.8   # sem novo comando por este tempo, o rover para (igual ao firmware)
 
     def __init__(self, scene: Scene | None = None, seed: int | None = None,
                  health: Health | None = None, **scan_kwargs):
         self._health = health or Health(HealthStatus.OK)
         self._fault: str | None = None
-        self._scene = scene or default_scene()
+        self._scene = scene or house_scene()
         self._rng = np.random.default_rng(seed)
         self._scan_kwargs = scan_kwargs
         self._opened = False
         self._scanning = threading.Event()
-        # Rover simulado: tração diferencial (mesma lógica de lados do firmware do rover).
-        xs = [p[0] for seg in self._scene.segments for p in seg]
-        ys = [p[1] for seg in self._scene.segments for p in seg]
-        self._bounds = (min(xs) + self.MARGIN_MM, max(xs) - self.MARGIN_MM,
-                        min(ys) + self.MARGIN_MM, max(ys) - self.MARGIN_MM) if xs else None
-        self._pose = [0.0, 0.0, 0.0]     # x mm, y mm, rumo° (só a thread de leitura escreve)
-        self._cmd = (0.0, 0.0)           # (esquerda, direita), -1..1
-        self._cmd_at = 0.0               # instante do último drive()
+        # Rover simulado estilo mouse: a direção pedida é na tela (x direita, y cima); ele gira até lá e anda.
+        self._lock = threading.Lock()    # a leitura (10 Hz) e o ticker de pose (60 Hz) integram o movimento
+        self._last_t = time.monotonic()
+        self._pose = [0.0, 0.0, 0.0]     # x mm, y mm, rumo°
+        self._steer = (0.0, 0.0, 0.0)    # (x, y, velocidade 0..1): direção pedida na tela e quão rápido
+        self._cmd_at = 0.0               # instante do último steer()
 
-    def drive(self, left: float, right: float) -> None:
-        self._cmd = (max(-1.0, min(1.0, left)), max(-1.0, min(1.0, right)))
+    def steer(self, x: float, y: float, speed: float) -> None:
+        mag = min(1.0, math.hypot(x, y))
+        ang = math.atan2(x, y)           # rumo pedido: 0° = +Y (cima), horário
+        self._steer = (math.sin(ang) * mag, math.cos(ang) * mag, max(0.0, min(1.0, speed)))
         self._cmd_at = time.monotonic()
 
     def _advance(self, dt: float) -> None:
         # "Homem morto": sem comando novo por DRIVE_TIMEOUT_S, o rover para (cliente caiu ou o "parar" se perdeu).
-        left, right = self._cmd if time.monotonic() - self._cmd_at <= self.DRIVE_TIMEOUT_S else (0.0, 0.0)
+        sx, sy, speed = self._steer if time.monotonic() - self._cmd_at <= self.DRIVE_TIMEOUT_S else (0.0, 0.0, 0.0)
         x, y, h = self._pose
-        h = (h + (left - right) / 2 * self.TURN_DEG_S * dt) % 360.0   # dir < esq => horário
-        v = (left + right) / 2 * self.SPEED_MM_S * dt
-        x += v * math.sin(math.radians(h))
-        y += v * math.cos(math.radians(h))
-        if self._bounds:                  # shortcut: só limita à sala; círculo e U não bloqueiam
-            x0, x1, y0, y1 = self._bounds
-            x, y = min(max(x, x0), x1), min(max(y, y0), y1)
+        mag = math.hypot(sx, sy)
+        if mag > 0:
+            n = max(1, math.ceil(dt / 0.05))     # passos curtos: o rover nunca "pula" uma parede
+            for _ in range(n):
+                d = dt / n
+                err = (math.degrees(math.atan2(sx, sy)) - h + 180.0) % 360.0 - 180.0   # [-180, 180)
+                rate = max(-self.TURN_DEG_S, min(self.TURN_DEG_S, err * self.TURN_GAIN))
+                step = max(-abs(err), min(abs(err), rate * d))          # nunca passa do alvo
+                h = (h + step) % 360.0
+                # Anda na direção em que o rover aponta; se ainda está virando muito, anda menos (ou nada).
+                v = mag * speed * self.SPEED_MM_S * d * max(0.0, math.cos(math.radians(err - step)))
+                x += v * math.sin(math.radians(h))
+                y += v * math.cos(math.radians(h))
+                x, y = push_out(self._scene, x, y, self.ROVER_RADIUS_MM)
         self._pose = [x, y, h]
+
+    def _integrate(self) -> tuple[float, float, float]:
+        """Avança o movimento até agora (relógio real) e devolve a pose. Seguro para duas threads."""
+        with self._lock:
+            now = time.monotonic()
+            self._advance(min(now - self._last_t, 0.25))
+            self._last_t = now
+            return tuple(self._pose)
+
+    def pose(self) -> tuple[float, float, float]:
+        return self._integrate() if self._scanning.is_set() else tuple(self._pose)
 
     def open(self, port: str) -> None:
         if port != self.PORT:
             raise SourceError(f"porta inválida para o simulador: {port!r}")
         self._opened = True
-        self._pose, self._cmd = [0.0, 0.0, 0.0], (0.0, 0.0)
+        self._pose, self._steer = [0.0, 0.0, 0.0], (0.0, 0.0, 0.0)
 
     def close(self) -> None:
         self.stop_scan()
@@ -197,6 +275,7 @@ class Simulator(LidarSource):
         if self._health.status is HealthStatus.ERROR:     # como o driver: Protection Stop
             raise SourceError(f"sensor em Protection Stop (código de erro {self._health.error_code}) "
                               f"e o RESET não resolveu (simulado)")
+        self._last_t = time.monotonic()     # sem "dívida" de tempo da pausa anterior
         self._scanning.set()
 
     def stop_scan(self) -> None:
@@ -204,13 +283,11 @@ class Simulator(LidarSource):
 
     def scans(self) -> Iterator[Scan]:
         period = 1.0 / self.SCAN_HZ
-        deadline = last = time.monotonic()
+        deadline = time.monotonic()
         while self._scanning.is_set():
             self._raise_if_faulted()
-            now = time.monotonic()
-            self._advance(min(now - last, 0.25))
-            last = now
-            yield simulate_scan(self._scene, self._rng, pose=tuple(self._pose), **self._scan_kwargs)
+            pose = self._integrate()
+            yield simulate_scan(self._scene, self._rng, pose=pose, **self._scan_kwargs)
             deadline += period
             delay = deadline - time.monotonic()
             if delay > 0:
