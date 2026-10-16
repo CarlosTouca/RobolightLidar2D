@@ -17,6 +17,7 @@ def test_served_by_backend_including_local_plotly():
         assert r.status_code == 200 and "Lidar 2D" in r.text
         for path in ("/app.js", "/plot.js", "/style.css", "/vendor/plotly-gl2d.min.js"):
             assert c.get(path).status_code == 200, path
+        assert c.get("/app.js").headers["cache-control"] == "no-cache"   # nunca JS velho em cache
 
 
 def test_no_cdn_or_external_resources():

@@ -23,6 +23,15 @@ from .sources.factory import create_source_for_port
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """Sempre revalida (ETag): sem isso o navegador pode reusar JS/HTML antigo logo após uma mudança."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app(source_for_port: Callable[[str], LidarSource] = create_source_for_port) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -41,7 +50,7 @@ def create_app(source_for_port: Callable[[str], LidarSource] = create_source_for
     app.add_exception_handler(SessionError, session_error_handler)
     app.add_exception_handler(SourceError, source_error_handler)
     app.include_router(router)
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")   # por último
+    app.mount("/", NoCacheStaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")   # por último
     return app
 
 
