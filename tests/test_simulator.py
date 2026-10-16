@@ -7,7 +7,8 @@ import pytest
 from backend.pipeline import scan_to_frame
 from backend.sources.base import SourceError
 from backend.sources.simulator import (
-    Scene, Simulator, default_scene, raycast, rect_segments, simulate_scan, u_shape,
+    Scene, Simulator, default_scene, house_scene, push_out, raycast, rect_segments, simulate_scan,
+    u_shape, wall,
 )
 
 CLEAN = dict(noise_mm=0.0, angle_jitter_deg=0.0, dropout=0.0)
@@ -151,7 +152,7 @@ def test_pose_changes_view_and_rover_drives():
     # Rumo 90° (olhando para +X): a frente do sensor enxerga a parede da direita (3500 mm).
     assert simulate_scan(scene, rng, **CLEAN, pose=(0, 0, 90)).distance_mm[0] == pytest.approx(3500)
 
-    sim = Simulator(seed=0, **CLEAN)
+    sim = Simulator(scene=Scene(segments=ROOM), seed=0, **CLEAN)
     sim.open("SIMULADOR")
     sim.steer(0, 1, 1.0)                                   # "cima" na tela, a seta já aponta para cima
     sim._advance(1.0)
@@ -168,7 +169,7 @@ def test_pose_changes_view_and_rover_drives():
     for _ in range(100):
         sim.steer(1, 0, 1.0)
         sim._advance(1.0)                                  # para na parede (folga de 300 mm), nunca a atravessa
-    assert sim._pose[0] == pytest.approx(3500 - Simulator.MARGIN_MM)
+    assert sim._pose[0] == pytest.approx(3500 - Simulator.ROVER_RADIUS_MM)
 
 
 def test_rover_stops_when_commands_stop_arriving():
@@ -200,3 +201,39 @@ def test_encode_scan_sends_pose_only_when_present():
     assert "pose" not in json.loads(encode_scan(1, 0.0, Frame(x=[1], y=[2], q=[3])))
     msg = json.loads(encode_scan(1, 0.0, Frame(x=[1], y=[2], q=[3], pose=(10.4, -20.6, 33.33))))
     assert msg["pose"] == [10, -21, 33.3]
+
+
+def test_wall_with_door_gaps():
+    segs = wall((0, 100), (1000, 100), ((200, 300), (600, 700)))          # horizontal, duas portas
+    assert segs == [((0, 100), (200, 100)), ((300, 100), (600, 100)), ((700, 100), (1000, 100))]
+    assert wall((50, 0), (50, 500), ((100, 200),)) == [((50, 0), (50, 100)), ((50, 200), (50, 500))]   # vertical
+
+
+def test_house_is_closed_and_start_is_free():
+    scene = house_scene()
+    d = raycast(scene, np.arange(0.0, 360.0, 1.0))
+    assert np.all(np.isfinite(d))                                          # sem buracos: todo raio bate em algo
+    assert push_out(scene, 0, 0, Simulator.ROVER_RADIUS_MM) == (0, 0)      # o rover começa em espaço livre
+
+
+def test_rover_is_blocked_by_house_walls_but_goes_through_doors():
+    sim = Simulator(seed=0, **CLEAN)
+    sim.open("SIMULADOR")
+    for _ in range(60):
+        sim.steer(0, 1, 1.0)                    # de (0, 0) para cima: bate na parede do corredor (y = 1000)
+        sim._advance(0.1)
+    assert sim._pose[1] == pytest.approx(1000 - Simulator.ROVER_RADIUS_MM)
+    sim._pose = [1500.0, 0.0, 0.0]              # em x = 1500 há uma abertura de 1,4 m na parede
+    for _ in range(60):
+        sim.steer(0, 1, 1.0)
+        sim._advance(0.1)
+    assert sim._pose[1] > 2400                  # atravessou o corredor e a porta do quarto 2
+
+
+def test_rover_does_not_tunnel_through_a_wall_after_a_long_pause():
+    sim = Simulator(scene=Scene(segments=ROOM), seed=0, **CLEAN)
+    sim.open("SIMULADOR")
+    sim._pose = [0.0, 2000.0, 0.0]
+    sim.steer(0, 1, 1.0)
+    sim._advance(1.5)                           # um passo enorme: sem sub-passos atravessaria a parede em y = 3000
+    assert sim._pose[1] == pytest.approx(3000 - Simulator.ROVER_RADIUS_MM)
