@@ -11,6 +11,14 @@
   <aside class="panel" aria-label="Painel de controle">
     <h1>Lidar 2D</h1>
 
+    <div class="statusbar" aria-live="polite">
+      <div class="statusline">
+        <span id="st-state" class="pill" data-state="disconnected">desconectado</span>
+        <span id="status" class="status" data-state="connecting" title="Conexão com o servidor"><i class="dot"></i><span id="status-text">conectando…</span></span>
+      </div>
+      <div class="metrics"><span>FPS <b id="fps">0.0</b></span><span><b id="points">0</b> pontos/volta</span></div>
+    </div>
+
     <section>
       <h2>Conexão</h2>
       <div class="row head">
@@ -19,45 +27,30 @@
       </div>
       <select id="port" class="wide"></select>
       <p id="port-desc" class="port-desc" aria-live="polite"></p>
-      <div class="row">
-        <button id="btn-connect" type="button" class="primary">Conectar</button>
-        <button id="btn-disconnect" type="button">Desconectar</button>
-      </div>
-      <div class="row">
-        <button id="btn-start" type="button" class="primary">Iniciar varredura</button>
-        <button id="btn-stop" type="button">Parar varredura</button>
+      <!-- Um passo de cada vez: só o botão do próximo passo aparece (o JS esconde os outros). -->
+      <div id="actions" class="actions">
+        <button id="btn-connect" type="button" class="primary big">Conectar</button>
+        <button id="btn-start" type="button" class="primary big">Iniciar varredura</button>
+        <button id="btn-stop" type="button" class="danger big">Parar varredura</button>
+        <button id="btn-disconnect" type="button" class="linkbtn">Desconectar</button>
       </div>
     </section>
 
     <div id="error" class="error" role="alert" hidden></div>
 
     <section>
-      <h2>Dispositivo</h2>
-      <dl class="facts">
-        <dt>Estado</dt><dd id="st-state" data-state="disconnected">desconectado</dd>
-        <dt>Modelo</dt><dd id="st-model">—</dd>
-        <dt>Firmware</dt><dd id="st-firmware">—</dd>
-        <dt>Nº de série</dt><dd id="st-serial">—</dd>
-        <dt>Saúde</dt><dd id="st-health">—</dd>
-        <dt>Pacotes inválidos</dt><dd id="st-errors">0</dd>
-      </dl>
-    </section>
-
-    <section>
-      <h2>Fluxo</h2>
-      <dl class="facts">
-        <dt>Servidor</dt>
-        <dd><span id="status" class="status" data-state="connecting"><i class="dot"></i><span id="status-text">conectando…</span></span></dd>
-        <dt>FPS</dt><dd><b id="fps">0.0</b></dd>
-        <dt>Pontos/varredura</dt><dd><b id="points">0</b></dd>
-      </dl>
-    </section>
-
-    <section>
       <h2>LiDAR</h2>
-      <label for="rot-hz">Velocidade de giro: <b id="rot-label">—</b></label>
-      <input id="rot-hz" type="range" min="8" max="12" step="0.5" value="10" class="wide" disabled>
-      <p id="rot-note" class="port-desc">Esta fonte não permite mudar a velocidade de giro.</p>
+      <div class="row head">
+        <label for="rot-hz">Velocidade de giro</label>
+        <b id="rot-label" class="value">—</b>
+      </div>
+      <input id="rot-hz" type="range" min="8" max="12" step="0.5" value="10" class="wide" list="rot-marks" disabled>
+      <datalist id="rot-marks"><option value="8"></option><option value="10"></option><option value="12"></option></datalist>
+      <div class="ticks" aria-hidden="true"><span id="rot-min">8</span><span id="rot-mid">10</span><span id="rot-max">12 Hz</span></div>
+      <div class="row head">
+        <p id="rot-note" class="port-desc">Esta fonte não permite mudar a velocidade de giro.</p>
+        <button id="rot-reset" type="button" class="small" disabled title="Volta para 10 Hz (600 rpm), o padrão do C1">Padrão</button>
+      </div>
     </section>
 
     <section>
@@ -67,8 +60,18 @@
         <input id="range" type="number" min="1" max="12" step="0.5" value="6" inputmode="decimal">
         <button id="btn-range" type="button">Aplicar</button>
       </div>
-      <label class="toggle"><input type="checkbox" id="color-q" checked> Colorir por qualidade</label>
+      <label class="toggle"><input type="checkbox" id="color-q" class="switch" checked> Colorir por qualidade</label>
     </section>
+
+    <details class="device">
+      <summary>Dispositivo <span id="st-health" class="health">—</span></summary>
+      <dl class="facts">
+        <dt>Modelo</dt><dd id="st-model">—</dd>
+        <dt>Firmware</dt><dd id="st-firmware">—</dd>
+        <dt>Nº de série</dt><dd id="st-serial">—</dd>
+        <dt>Pacotes inválidos</dt><dd id="st-errors">0</dd>
+      </dl>
+    </details>
   </aside>
 
   <main id="plot"></main>
