@@ -35,5 +35,6 @@ export const api = {
   disconnect: () => request('POST', '/api/disconnect'),
   start: () => request('POST', '/api/scan/start'),
   stop: () => request('POST', '/api/scan/stop'),
+  rotation: (hz) => request('POST', '/api/rotation', { hz }),
   steer: (x, y, speed) => request('POST', '/api/steer', { x, y, speed }),
 };

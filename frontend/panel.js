@@ -18,6 +18,7 @@ export function initPanel(hooks) {
   let busy = false;        // comando em andamento
   let cmdError = '';       // erro do último comando (some no próximo comando bem-sucedido)
   let offline = false;     // servidor inacessível
+  let dragging = false;    // o usuário está arrastando o controle de giro: não sobrescrever com o estado do servidor
 
   function showError() {
     const el = $('error');
@@ -53,7 +54,24 @@ export function initPanel(hooks) {
     const el = $('st-errors');
     el.textContent = errs;
     el.dataset.bad = errs > 0 ? '1' : '';
+    const rot = status && status.rotation;
+    const slider = $('rot-hz');
+    slider.disabled = busy || offline || !rot;
+    if (rot) {
+      slider.min = rot.min_hz; slider.max = rot.max_hz;
+      if (!dragging) slider.value = rot.hz;
+    }
+    showRotation(rot);
     showError();
+  }
+
+  // Giro mais rápido = menos pontos por volta: a amostragem do sensor é fixa (C1: 5 kHz).
+  function showRotation(rot) {
+    const hz = rot ? parseFloat($('rot-hz').value) : null;
+    $('rot-label').textContent = hz ? `${hz.toFixed(1)} Hz (${Math.round(hz * 60)} rpm)` : '—';
+    $('rot-note').textContent = rot
+      ? `≈ ${Math.round(5000 / hz)} pontos por volta: quanto mais rápido, menos pontos.`
+      : 'Esta fonte não permite mudar a velocidade de giro.';
   }
 
   function apply(newStatus) {
@@ -112,6 +130,14 @@ export function initPanel(hooks) {
   $('btn-start').addEventListener('click', () => run(() => api.start()));
   $('btn-stop').addEventListener('click', () => run(() => api.stop()));
   $('btn-refresh').addEventListener('click', loadPorts);
+  $('rot-hz').addEventListener('input', () => { dragging = true; showRotation(status && status.rotation); });
+  $('rot-hz').addEventListener('change', () => {
+    // O valor é lido ANTES do run(): ele chama render(), que devolveria o controle ao valor antigo do servidor.
+    // `dragging` só cai depois da resposta, para o controle não "voltar" enquanto o pedido está em andamento.
+    const hz = parseFloat($('rot-hz').value);
+    dragging = true;
+    run(() => api.rotation(hz)).finally(() => { dragging = false; render(); });
+  });
   $('port').addEventListener('change', render);
 
   const applyRange = () => {

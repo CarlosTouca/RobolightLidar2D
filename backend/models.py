@@ -62,6 +62,14 @@ class Health:
 
 
 @dataclass
+class Rotation:
+    """Velocidade de giro do sensor em voltas por segundo (Hz) e a faixa permitida."""
+    hz: float
+    min_hz: float
+    max_hz: float
+
+
+@dataclass
 class Status:
     """Estado exposto no painel de controle."""
     state: str = "disconnected"   # disconnected | connected | scanning
@@ -71,4 +79,5 @@ class Status:
     health: Health | None = None
     points: int = 0
     errors: int = 0               # pacotes inválidos descartados pelo driver
+    rotation: Rotation | None = None   # None: a fonte não permite mudar a velocidade de giro
     error: str = ""

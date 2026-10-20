@@ -79,7 +79,8 @@ proporcional ao erro (suave nos ajustes finos, no máximo 200°/s).
 
 Escopo: nuvem de pontos 2D ao vivo, vista de cima, sensor na origem, mais o painel de controle.
 **Fora do escopo, sem pedido explícito:** SLAM, grade de ocupação, navegação, estatísticas de precisão,
-modos de varredura além do Standard e controle de velocidade do motor.
+modos de varredura além do Standard. (A velocidade de giro do sensor passou a ser um controle do painel, só no
+simulador; no C1 real depende do teste de bancada em "Velocidade do motor".)
 
 ```
 Fonte (thread) → pipeline (filtra q=0/d=0, polar→x,y,q) → Hub (1 quadro) → 10 Hz → WebSocket → Plotly
@@ -197,7 +198,32 @@ Só depois de 4 e 5 a etapa 6 pode ser marcada como concluída.
 working state depends on the laser scan command". Portanto o driver **não usa DTR/PWM**: SCAN liga
 o motor e STOP o desliga. O manual do usuário do C1 (§Pin Definition, p.12) menciona um sinal
 "MOTOCTL", mas a tabela de pinos do mesmo manual não tem esse pino; tratei como texto herdado de
-outro modelo. O comando de velocidade `A8` do manual v2.2 (§4.11, p.44) é só da série S1 e **não é usado**.
+outro modelo. O comando de velocidade `A8` do manual v2.2 (§4.11, p.44) é só da série S1 e **não é usado** pelo
+driver nem pelo painel; veja a seção seguinte.
+
+### Velocidade do motor (pesquisa de 20/out/2026; **no C1 real, não validado**)
+
+| O que | Fonte |
+|---|---|
+| Frequência de varredura **8 a 12 Hz** (480 a 720 rpm), típico 10 Hz; amostragem fixa de 5 kHz; 0,72° no típico | Datasheet C1 rev.1.1, p.9 |
+| O sensor ajusta a resolução angular conforme a rotação (mais lento = mais pontos por volta: ≈ 5000 / Hz) | Datasheet C1, "System Composition" |
+| "Users can change the rotation speed of the motor by sending a motor speed setting command"; o motor não liga/desliga sozinho | Datasheet C1, "Scanner Motor Control", p.14 |
+| O RoboStudio tem "Adjust Motor Speed" para o C1; a frequência se configura por funções do SDK | Manual do kit C1 rev.1.0, pp.8-10 e 12 |
+| `MOTOR_SPEED_CTRL`: `A5 A8 02 <rpm u16 LE> <checksum>`; rpm = 0 leva ao estado ocioso. C1 = modelo principal 4 (o nosso reporta `0x41`) | Protocolo S&C v2.8, pp.25 e 32 |
+
+O que **não** fecha: o SDK público só manda o comando de rpm para modelos de ID principal ≥ 6 (série S); o C1
+(ID 4) cai no caminho da "placa acessória" ou só liga/desliga o motor pelo DTR (`sl_lidar_driver.cpp`,
+`checkMotorCtrlSupport`), e a issue Slamtec/rplidar_sdk#114 relata `setMotorSpeed` "OK" sem efeito. A nota de
+rodapé 4 do `MOTOR_SPEED_CTRL` no v2.8 não pôde ser lida (a versão antiga dizia "só a série S1"). As entradas
+de rotação do `GET_LIDAR_CONF` (0x01 desejada, 0x04 mínima, 0x05 máxima) só existem nos cabeçalhos do SDK.
+
+- **Simulador:** o painel tem "Velocidade de giro" (8 a 12 Hz, `POST /api/rotation`): muda a taxa de varreduras
+  e os pontos por volta (5000 / Hz). O controle fica desabilitado nas fontes que não permitem (hoje, o C1 real).
+- **C1 real:** `scripts/c1_motor_test.py` faz o teste de bancada. Padrão = só leitura (STOP, INFO, HEALTH,
+  `GET_LIDAR_CONF`, SCAN e rotação medida pelo intervalo entre voltas). Com `--set-rpm 540 660 --i-understand` envia
+  `A8`, mede, e SEMPRE restaura 600 rpm e dá STOP. Só aceita 480 a 720 rpm (e o que o sensor informar). Recusa
+  portas Bluetooth. Grava `captures/c1_motor_*.json`. Só depois de um resultado "SEGUIU" o painel passa a oferecer o
+  controle no C1 (o driver já tem `read_conf` e `set_motor_rpm` experimentais, que a `Session` não usa).
 
 **Limite do modo Standard.** Só há 3 bits de verificação por pacote (S/S̅ e C, mais a faixa do ângulo):
 um alinhamento errado passa em ~1 de cada 6 vezes. Por isso o decodificador só reaceita o
@@ -209,9 +235,9 @@ Nada abaixo deve ser tratado como confirmado:
 
 1. **O driver inteiro com o C1 real**: handshake STOP → GET_INFO → GET_HEALTH, SCAN, parada, reconexão.
 2. **O motor**: que SCAN o liga e STOP o desliga, sem sinal extra (a contradição "MOTOCTL" do manual do
-   usuário só se resolve no aparelho).
+   usuário só se resolve no aparelho), e **se este firmware (1.02) aceita `MOTOR_SPEED_CTRL`** (`scripts/c1_motor_test.py`).
 3. **O formato dos bytes reais** contra o manual v2.2: descritor, pacote de 5 bytes, bits S/S̅/C.
-4. **O manual v2.8 (S&C series)**, que lista o C1, respondeu HTTP 403 e **não foi lido**. O que dependeria
+4. **O manual v2.8 (S&C series)** foi lido em 20/out/2026 só em parte: a nota de rodapé do `MOTOR_SPEED_CTRL` não saiu do PDF. O que dependeria
    dele: tabela do ID de modelo (o painel mostra "RPLIDAR (ID 0x..)", sem inventar o nome), comando de
    velocidade do motor, e quaisquer particularidades do C1 no modo Standard.
 5. **Escala da qualidade no C1**: assumida 0..63 (6 bits). O colorbar e o simulador usam esse limite.

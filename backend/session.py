@@ -68,6 +68,7 @@ class Session:
                       port=self._port, info=self._info, health=self._health,
                       points=self.last_points,
                       errors=source.error_count if source else 0,
+                      rotation=source.rotation() if source else None,
                       error=self._error)
 
     # --- comandos ------------------------------------------------------------------
@@ -113,6 +114,12 @@ class Session:
             if self._source.pose() is not None:     # só o rover simulado: posição a ~60/s, à parte das varreduras
                 threading.Thread(target=self._pose_loop, args=(self._source, self._thread),
                                  name="lidar-pose", daemon=True).start()
+
+    def set_rotation(self, hz: float) -> None:
+        source = self._source
+        if source is None:
+            raise SessionError("not_connected", "não há dispositivo conectado; conecte primeiro")
+        source.set_rotation(hz)
 
     def steer(self, x: float, y: float, speed: float) -> None:
         source = self._source          # sem lock: comando de alta frequência, não pode esperar um connect()

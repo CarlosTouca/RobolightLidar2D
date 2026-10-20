@@ -258,3 +258,28 @@ def test_pose_is_integrated_by_wall_clock_from_any_thread():
     p2 = sim.pose()
     assert p2[1] > p1[1] > 0 and p2[1] - p1[1] == pytest.approx(0.2 * Simulator.SPEED_MM_S, rel=0.35)
     sim.close()
+
+
+def test_rotation_speed_changes_scan_rate_and_points_per_revolution():
+    sim = Simulator(seed=0, noise_mm=0.0, angle_jitter_deg=0.0, dropout=0.0)
+    sim.open("SIMULADOR")
+    assert sim.rotation().hz == 10.0 and (sim.rotation().min_hz, sim.rotation().max_hz) == (8.0, 12.0)
+    sim.start_scan()
+    it = sim.scans()
+    assert len(next(it).angle_deg) == 500                       # 5 kHz / 10 Hz
+    for hz, points in ((8.0, 625), (12.0, 417)):                # taxa de amostragem fixa: mais lento, mais pontos
+        sim.set_rotation(hz)
+        assert len(next(it).angle_deg) == points
+    t0 = time.monotonic()
+    for _ in range(6):
+        next(it)
+    assert (time.monotonic() - t0) / 6 == pytest.approx(1 / 12, rel=0.25)   # e as voltas seguem a nova taxa
+    sim.close()
+
+
+def test_rotation_out_of_range_is_refused():
+    sim = Simulator(seed=0)
+    for bad in (7.9, 12.1, 0.0, -10.0):
+        with pytest.raises(SourceError):
+            sim.set_rotation(bad)
+    assert sim.rotation().hz == 10.0
