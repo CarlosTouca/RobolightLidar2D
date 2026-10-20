@@ -124,7 +124,6 @@ export function createPlot(el, rangeM) {
   cv.style.cssText = 'position:absolute;pointer-events:none;contain:strict;max-width:100%;max-height:100%';
   el.parentNode.style.position = 'relative';
   el.parentNode.style.overflow = 'hidden';
-  let lastSize = '', lastZoom = '', sizeChanges = 0, zoomChanges = 0;   // painel "Tela": o gráfico mudou de tamanho ou de zoom?
   let colors = null;
   const readColors = () => ({ body: css('--sensor'), nose: css('--warn'), line: css('--fg'), dot: css('--bar-bg') });
 
@@ -135,10 +134,6 @@ export function createPlot(el, rangeM) {
     if (cv.parentNode !== el.parentNode) el.parentNode.insertBefore(cv, el.nextSibling);
     const box = el.getBoundingClientRect();                         // medida fracionada: clientWidth arredonda para cima
     const w = Math.floor(box.width), h = Math.floor(box.height), dpr = window.devicePixelRatio || 1;
-    const size = `${w}×${h}`, zoom = (Math.abs(xa.range[1] - xa.range[0]) / 2).toFixed(2);
-    if (lastSize && size !== lastSize) sizeChanges++;
-    if (lastZoom && zoom !== lastZoom) zoomChanges++;
-    lastSize = size; lastZoom = zoom;
     cv.style.left = `${el.offsetLeft}px`; cv.style.top = `${el.offsetTop}px`;
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
       cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
@@ -290,8 +285,5 @@ export function createPlot(el, rangeM) {
     kick();
   }
 
-  /** Tamanho, zoom e quantas vezes eles mudaram: mostra no painel se o gráfico está se redimensionando sozinho. */
-  const stats = () => ({ size: lastSize, zoom: lastZoom, sizeChanges, zoomChanges });
-
-  return { update, setRange, setRotation, setPose, stats };
+  return { update, setRange, setRotation, setPose };
 }
