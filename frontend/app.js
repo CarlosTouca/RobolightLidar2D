@@ -94,6 +94,7 @@ async function pump() {
   const id = ++renderId;
   try {
     await plot.update(msg, $('color-q').checked);
+    showMapCount();
     lastFrame = msg;
     drawTimes.push(performance.now());
     dbg.drawn++;
@@ -144,11 +145,31 @@ function clearView() {
 
 initPanel({
   onRange: (m) => plot.setRange(m),
-  onState: (s) => { serverState = s; },
+  onState: (s) => {
+    if (s === 'disconnected' && serverState !== 'disconnected') { plot.clearMap(); showMapCount(); }   // nova sessão = outras coordenadas
+    serverState = s;
+  },
   onStopped: clearView,
 });
 
 initGamepad(plot);
+
+// ---- Mapa guardado: guardar/limpar/salvar --------------------------------------------------
+function showMapCount() {
+  const n = plot.mapSize();
+  $('map-count').textContent = `${n.toLocaleString('pt-BR')} ${n === 1 ? 'ponto guardado' : 'pontos guardados'}`;
+  $('map-clear').disabled = $('map-save').disabled = n === 0;
+}
+$('map-keep').addEventListener('change', () => plot.setKeep($('map-keep').checked));
+$('map-clear').addEventListener('click', () => { plot.clearMap(); showMapCount(); });
+$('map-save').addEventListener('click', () => {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, (c) => (c === 'T' ? '_' : ''));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([plot.mapCsv()], { type: 'text/csv;charset=utf-8' }));
+  a.download = `mapa_${stamp}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
 
 plot.update(null, true); // enquadramento inicial (eixos, anéis, sensor) via Plotly.react
 connect();

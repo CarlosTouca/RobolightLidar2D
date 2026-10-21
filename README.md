@@ -67,6 +67,14 @@ na tela girada), X/O param enquanto apertados e L1/R1 mudam a velocidade; o coma
 e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
 do firmware, onde esquerda/direita giram no lugar): é só uma forma intuitiva de explorar o mapa.
 
+**Mapa guardado.** Com posição conhecida (hoje só o simulador), o painel "Mapa" guarda os pontos já vistos para o mapa
+ir se formando enquanto o rover anda: uma célula de 5 cm por ponto (o mais recente vence), no máximo 40 mil pontos
+(os mais antigos saem primeiro), desenhados esmaecidos sob a varredura atual. "Limpar mapa" zera, "Salvar (CSV)"
+baixa `x_mm,y_mm,qualidade` (mundo, mm) e desconectar limpa o mapa (outra sessão, outras coordenadas). Fica no
+navegador (`frontend/mapmemory.js`); recarregar a página perde o mapa. **No C1 real ainda não funciona**: o sensor não
+informa a posição, e sem ela varreduras diferentes não se alinham. O próximo passo é estimar a posição só pelo LiDAR
+(casamento de varreduras) e entregá-la no mesmo campo `pose`, sem mudar o mapa.
+
 Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico mostra o **mapa fixo**: a sala
 fica parada e o rover (desenhado de cima, com o LiDAR no centro) anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
 antes. O simulador é uma **casa** de 10 x 8 m (`house_scene()`: sala, cozinha, corredor, dois quartos e banheiro, com
