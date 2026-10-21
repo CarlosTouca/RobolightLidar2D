@@ -8,6 +8,9 @@ REST (JSON). Erros têm sempre o formato {"error": {"code": "...", "message": ".
   POST /api/disconnect
   POST /api/scan/start
   POST /api/scan/stop
+  POST /api/pose/reset    volta a posição estimada (só pelo LiDAR) para a origem: mapa novo
+  POST /api/pose/blind    {"m": 0.2..3}  zona cega da posição estimada: ignora o que está mais perto (peças do rover)
+  GET  /api/recording     últimas varreduras da posição estimada (NDJSON) para diagnóstico
   POST /api/rotation      {"hz": 8..12}  velocidade de giro do sensor (simulador; 502 se a fonte não permite)
   POST /api/steer         {"x": -1..1, "y": -1..1, "speed": 0..255}  rover simulado (direção na tela)
   409 transição inválida (ex.: iniciar varredura sem conectar) | 502 falha da fonte
@@ -18,7 +21,7 @@ WebSocket /ws: o cliente envia, a cada varredura desenhada, o seu `seq` como tex
 from dataclasses import asdict
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import config
@@ -61,6 +64,28 @@ class SteerBody(BaseModel):
 
 class RotationBody(BaseModel):
     hz: float = Field(gt=0, le=60)
+
+
+@router.post("/api/pose/reset")
+def pose_reset(request: Request) -> dict:
+    _session(request).reset_pose()
+    return _status(request)
+
+
+class BlindBody(BaseModel):
+    m: float = Field(ge=0.2, le=3)
+
+
+@router.post("/api/pose/blind")
+def pose_blind(body: BlindBody, request: Request) -> dict:
+    _session(request).set_blind_zone(body.m)
+    return _status(request)
+
+
+@router.get("/api/recording")
+def recording(request: Request) -> StreamingResponse:
+    return StreamingResponse(_session(request).recorder.lines(), media_type="application/x-ndjson",
+                             headers={"Content-Disposition": 'attachment; filename="varreduras.ndjson"'})
 
 
 @router.post("/api/rotation")

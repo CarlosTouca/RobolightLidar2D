@@ -55,13 +55,22 @@
 
     <section>
       <h2>Mapa</h2>
-      <label class="toggle"><input type="checkbox" id="map-keep" class="switch" checked> Guardar pontos já vistos</label>
-      <p id="map-count" class="port-desc">0 pontos guardados</p>
+      <label class="toggle"><input type="checkbox" id="map-keep" class="switch" checked> Guardar só as paredes</label>
+      <p id="map-count" class="port-desc">0 pontos de parede</p>
       <div class="row">
         <button id="map-clear" type="button" disabled>Limpar mapa</button>
         <button id="map-save" type="button" disabled>Salvar (CSV)</button>
       </div>
-      <p class="port-desc">Vale quando a posição do rover é conhecida (simulador). No C1 real, depende da estimativa de posição.</p>
+      <p id="map-note" class="port-desc">—</p>
+      <div id="blind-box" hidden>
+        <div class="row head">
+          <label for="blind-m">Zona cega</label>
+          <b id="blind-label" class="value">—</b>
+        </div>
+        <input id="blind-m" type="range" min="0.2" max="2" step="0.1" value="0.8" class="wide">
+        <p class="port-desc">Ignora o que está mais perto que isso. Coisas presas ao rover (mastro, cabos, bateria) andam junto com o sensor e enganam a posição: ponha a zona um pouco maior que elas. Em lugar apertado, diminua.</p>
+        <a id="rec-link" class="linkbtn" href="/api/recording" download="varreduras.ndjson">Baixar varreduras (diagnóstico)</a>
+      </div>
     </section>
 
     <section>

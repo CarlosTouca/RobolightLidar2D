@@ -67,13 +67,40 @@ na tela girada), X/O param enquanto apertados e L1/R1 mudam a velocidade; o coma
 e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
 do firmware, onde esquerda/direita giram no lugar): é só uma forma intuitiva de explorar o mapa.
 
-**Mapa guardado.** Com posição conhecida (hoje só o simulador), o painel "Mapa" guarda os pontos já vistos para o mapa
-ir se formando enquanto o rover anda: uma célula de 5 cm por ponto (o mais recente vence), no máximo 40 mil pontos
-(os mais antigos saem primeiro), desenhados esmaecidos sob a varredura atual. "Limpar mapa" zera, "Salvar (CSV)"
-baixa `x_mm,y_mm,qualidade` (mundo, mm) e desconectar limpa o mapa (outra sessão, outras coordenadas). Fica no
-navegador (`frontend/mapmemory.js`); recarregar a página perde o mapa. **No C1 real ainda não funciona**: o sensor não
-informa a posição, e sem ela varreduras diferentes não se alinham. O próximo passo é estimar a posição só pelo LiDAR
-(casamento de varreduras) e entregá-la no mesmo campo `pose`, sem mudar o mapa.
+**Mapa guardado (só as paredes).** Com posição conhecida, o painel "Mapa" forma o mapa enquanto o rover anda, mas
+guarda só o que é **parede**, não todo ponto visto: uma grade de ocupação de 5 cm (`frontend/mapmemory.js`) em que
+cada batida do LiDAR sobe a confiança da célula e cada raio que a atravessa (o LiDAR viu além) a desce; só aparecem
+células confirmadas (duas batidas seguidas). Parede é vista de novo a cada varredura e se firma; ruído, pessoa
+passando e pontos fora do lugar (posição estimada errada) não chegam a se firmar, e um raio que atravessa o lugar
+depois apaga o que sobrou; peça presa ao rover cai em células diferentes a cada varredura, então nenhuma se
+confirma. Células não confirmadas e antigas (30 varreduras) são descartadas. Desenhado esmaecido sob a varredura
+atual. "Limpar mapa" zera, "Salvar (CSV)" baixa só as paredes (`x_mm,y_mm,qualidade`, mundo, mm) e desconectar
+limpa o mapa (outra sessão, outras coordenadas). Fica no navegador; recarregar a página perde o mapa.
+
+**Posição só pelo LiDAR (C1 real; EXPERIMENTAL).** O C1 não informa onde está, então `backend/localization.py`
+estima a posição comparando cada varredura com uma de referência (ICP ponto-a-reta, com quadro-chave a cada 10 cm
+ou 5°) e acumula o deslocamento e o giro; a `Session` põe o resultado no campo `pose` de cada quadro, e o mapa, o
+rover desenhado e o "Limpar mapa" funcionam como no simulador (`pose_mode` = `estimada` no `/api/status`; `Limpar
+mapa` também chama `POST /api/pose/reset`). Medido: no simulador, em ~6 m pela casa, erro de posição de 50 a 70 mm e
+menos de 1° (a verdade é conhecida); na captura real do C1 parado (128 voltas, 442 pontos), deriva de 3,4 mm; cerca
+de 30 ms por varredura. **Não validado com o rover real em movimento.** Limites esperados: em corredor comprido e
+liso a estimativa para de avançar nesse eixo; o erro se acumula (não há fechamento de laço, então voltar ao ponto
+de partida não "fecha" o mapa); giros de mais de ~15° entre duas varreduras (150°/s) podem perder o
+alinhamento. Quando perde, a posição fica parada e o painel avisa.
+
+**Zona cega (primeiro problema achado com o sensor real).** Peças presas ao rover (mastro, cabos, bateria) andam
+junto com o sensor: nas varreduras elas parecem imóveis e o casamento conclui que o rover quase não saiu do lugar,
+então a posição fica para trás e o mapa vira riscos e arcos em volta do rover. Reproduzido no simulador: só 6% dos
+pontos presos ao rover levam o erro a 2,5 m. A correção é ignorar o que está mais perto que a **zona cega**
+(padrão 0,8 m; no painel, "Zona cega", sob "Mapa", só com posição estimada): com 60 pontos presos entre 50 e 75 cm o
+erro cai de mais de 1 m para menos de 15 cm. Ajuste-a para um pouco mais que o raio dessas peças; em lugar
+apertado (corredor de menos de ~1,6 m) uma zona grande tira as paredes do casamento, então reduza. A detecção
+automática dessas peças fica para depois.
+
+**Diagnóstico com dados reais.** Com a posição estimada, o servidor guarda as últimas ~2 min de varreduras brutas
+(`GET /api/recording`, botão "Baixar varreduras (diagnóstico)", NDJSON). `scripts/replay_scans.py arquivo.ndjson
+[--min-range 1.2] [--png saida.png]` refaz a estimativa offline com o código atual e mostra quantas vezes perdeu o
+alinhamento e o que mudaria com outra zona cega, sem abrir porta serial.
 
 Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico mostra o **mapa fixo**: a sala
 fica parada e o rover (desenhado de cima, com o LiDAR no centro) anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como

@@ -80,4 +80,7 @@ class Status:
     points: int = 0
     errors: int = 0               # pacotes inválidos descartados pelo driver
     rotation: Rotation | None = None   # None: a fonte não permite mudar a velocidade de giro
+    pose_mode: str = ""            # "fonte" (o simulador informa), "estimada" (só pelo LiDAR) ou "" (sem posição)
+    pose_ok: bool = True           # com pose estimada: a última varredura casou bem?
+    pose_blind_m: float = 0.0      # com pose estimada: zona cega (m): o que está mais perto é ignorado no casamento
     error: str = ""
