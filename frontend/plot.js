@@ -3,6 +3,8 @@
 // Convenção (igual ao backend): 0° = frente = +Y (para cima), sentido horário.
 // O backend envia mm inteiros; aqui convertemos para metros só para exibir.
 
+import { MapMemory } from './mapmemory.js';
+
 const Q_MAX = 63; // modo Standard do C1: qualidade 0..63
 const RING_LABEL_ANGLE = Math.SQRT1_2; // rótulos a 45° (cima-direita) de cada anel
 
@@ -113,6 +115,8 @@ export function createPlot(el, rangeM) {
   let animating = false;
   let drawing = false;                   // Plotly.react em andamento: o giro dos pontos espera por ele
   let hooked = false;
+  const memory = new MapMemory();        // pontos do mundo já vistos (mapa que vai se formando)
+  let keep = true;                       // guardar (e mostrar) os pontos já vistos
 
   // O rover é desenhado num canvas POR CIMA do gráfico, fora do Plotly: restyle/react custam dezenas de ms
   // e faziam o movimento travar. Assim ele anda na taxa da tela, sem depender do que o Plotly está fazendo.
@@ -124,7 +128,6 @@ export function createPlot(el, rangeM) {
   cv.style.cssText = 'position:absolute;pointer-events:none;contain:strict;max-width:100%;max-height:100%';
   el.parentNode.style.position = 'relative';
   el.parentNode.style.overflow = 'hidden';
-  let lastSize = '', lastZoom = '', sizeChanges = 0, zoomChanges = 0;   // painel "Tela": o gráfico mudou de tamanho ou de zoom?
   let colors = null;
   const readColors = () => ({ body: css('--sensor'), nose: css('--warn'), line: css('--fg'), dot: css('--bar-bg') });
 
@@ -135,10 +138,6 @@ export function createPlot(el, rangeM) {
     if (cv.parentNode !== el.parentNode) el.parentNode.insertBefore(cv, el.nextSibling);
     const box = el.getBoundingClientRect();                         // medida fracionada: clientWidth arredonda para cima
     const w = Math.floor(box.width), h = Math.floor(box.height), dpr = window.devicePixelRatio || 1;
-    const size = `${w}×${h}`, zoom = (Math.abs(xa.range[1] - xa.range[0]) / 2).toFixed(2);
-    if (lastSize && size !== lastSize) sizeChanges++;
-    if (lastZoom && zoom !== lastZoom) zoomChanges++;
-    lastSize = size; lastZoom = zoom;
     cv.style.left = `${el.offsetLeft}px`; cv.style.top = `${el.offsetTop}px`;
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
       cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
@@ -174,13 +173,13 @@ export function createPlot(el, rangeM) {
     ctx.restore();
   }
 
-  const viewPoints = () => {
-    const n = world.x.length;
+  const viewPoints = (src = world) => {
+    const n = src.x.length;
     const xs = new Float32Array(n), ys = new Float32Array(n);
     const c = Math.cos(rotShown * DEG), s = Math.sin(rotShown * DEG);
     for (let i = 0; i < n; i++) {
-      xs[i] = world.x[i] * c + world.y[i] * s;
-      ys[i] = -world.x[i] * s + world.y[i] * c;
+      xs[i] = src.x[i] * c + src.y[i] * s;
+      ys[i] = -src.x[i] * s + src.y[i] * c;
     }
     return [xs, ys];
   };
@@ -193,6 +192,9 @@ export function createPlot(el, rangeM) {
     if (last) update(last.frame, last.byQuality);
   });
 
+  // Mapa guardado, já girado como a tela. Vazio quando "guardar" está desligado.
+  const memoryView = () => (keep ? viewPoints(memory.arrays()) : [new Float32Array(0), new Float32Array(0)]);
+
   // Animação (só roda enquanto há o que mover): avança a pose e a rotação e redesenha o rover (canvas).
   // Girar o mapa também move os pontos, e isso sim passa pelo Plotly.restyle (só x/y).
   function step() {
@@ -203,8 +205,8 @@ export function createPlot(el, rangeM) {
     const rotMoved = dr !== 0;
     rotShown = Math.abs(dr) < 0.05 ? rotTarget : rotShown + dr * 0.4;     // aproxima o alvo sem overshoot
     if (rotMoved && el.data && !drawing) {
-      const [xs, ys] = viewPoints();
-      Plotly.restyle(el, { x: [xs], y: [ys] }, [0]);
+      const [xs, ys] = viewPoints(), [mx, my] = memoryView();
+      Plotly.restyle(el, { x: [mx, xs], y: [my, ys] }, [0, 1]);
     }
     drawRover();
     if (t < 1 || rotShown !== rotTarget) nextFrame(step); else animating = false;
@@ -213,7 +215,7 @@ export function createPlot(el, rangeM) {
 
   /** Desenha um quadro {x[], y[], q[], pose?} (mm). Sempre Plotly.react: o gráfico nunca é recriado.
    *  Os pontos vêm relativos ao sensor; com `pose` eles são levados ao mundo (mapa fixo, o rover anda). */
-  function update(frame, byQuality) {
+  function update(frame, byQuality, remember = true) {
     last = { frame, byQuality };
     if (frame) {
       // Pontos: levados ao mundo com a pose DA VARREDURA. O rover usa a pose mais recente (setPose).
@@ -231,8 +233,16 @@ export function createPlot(el, rangeM) {
     } else {
       world = { x: new Float32Array(0), y: new Float32Array(0) };
     }
+    // Só com posição conhecida (simulador, ou a estimativa do rover real): sem ela os pontos de varreduras
+    // diferentes não se alinham e o mapa viraria um borrão.
+    if (frame && frame.pose && keep && remember) memory.add(world.x, world.y, frame.q);   // remember=false: só redesenha (p.ex. ao limpar)
     const n = world.x.length;
     const [xs, ys] = viewPoints();
+    const [mx, my] = memoryView();
+    const remembered = {
+      type: 'scattergl', mode: 'markers', x: mx, y: my, hoverinfo: 'skip', showlegend: false,
+      marker: { size: 3, color: pointColor, opacity: 0.35 },
+    };
     const points = {
       type: 'scattergl',
       mode: 'markers',
@@ -247,7 +257,7 @@ export function createPlot(el, rangeM) {
         : { size: 4, color: pointColor, showscale: false },
     };
     drawing = true;
-    return Plotly.react(el, [points], layout, CONFIG).then((r) => {
+    return Plotly.react(el, [remembered, points], layout, CONFIG).then((r) => {
       if (!hooked && el.on) {                       // zoom, pan e redimensionamento mudam a conversão metros -> pixels
         hooked = true;
         el.on('plotly_relayout', drawRover);
@@ -290,8 +300,16 @@ export function createPlot(el, rangeM) {
     kick();
   }
 
-  /** Tamanho, zoom e quantas vezes eles mudaram: mostra no painel se o gráfico está se redimensionando sozinho. */
-  const stats = () => ({ size: lastSize, zoom: lastZoom, sizeChanges, zoomChanges });
+  /** Liga/desliga guardar (e mostrar) os pontos já vistos; a memória só some com clearMap(). */
+  function setKeep(on) {
+    keep = !!on;
+    return last ? update(last.frame, last.byQuality) : undefined;
+  }
 
-  return { update, setRange, setRotation, setPose, stats };
+  function clearMap() {
+    memory.clear();
+    return last ? update(last.frame, last.byQuality, false) : undefined;   // não devolve o quadro atual para a memória
+  }
+
+  return { update, setRange, setRotation, setPose, setKeep, clearMap, mapSize: () => memory.size, mapCsv: () => memory.toCsv() };
 }

@@ -32,9 +32,18 @@ CMD_RESET = 0x40       # [P22] §4.3 p.15: sem resposta; esperar >= 2 ms
 CMD_SCAN = 0x20        # [P22] §4.4 p.15-16: modo Legacy/Standard
 CMD_GET_INFO = 0x50    # [P22] §4.8 p.34
 CMD_GET_HEALTH = 0x52  # [P22] §4.9 p.36
+# EXPERIMENTAIS: usados só por scripts/c1_motor_test.py; NÃO validados no C1 real (ver README, "Velocidade do motor").
+CMD_GET_LIDAR_CONF = 0x84      # [P28] §4 p.28-29: A5 84 04 <tipo u32> <checksum>; resposta descritor tipo 0x20, dados = tipo u32 + valor
+CMD_MOTOR_SPEED_CTRL = 0xA8    # [P28] §4 p.32: A5 A8 02 <rpm u16> <checksum>; rpm = 0 leva ao estado ocioso
+TYPE_LIDAR_CONF = 0x20         # tipo do descritor de resposta do GET_LIDAR_CONF (SDK: SL_LIDAR_ANS_TYPE_GET_LIDAR_CONF)
+# Entradas de rotação: só existem nos cabeçalhos do SDK (sl_lidar_cmd.h); o protocolo v2.8 documenta apenas 0x70-0x7F.
+CONF_DESIRED_ROT_FREQ, CONF_MIN_ROT_FREQ, CONF_MAX_ROT_FREQ = 0x01, 0x04, 0x05
+C1_MIN_RPM, C1_MAX_RPM = 480, 720   # datasheet C1 rev.1.1 p.9: 8~12 Hz (10 Hz típico)
 
 STOP_WAIT_S = 0.001    # [P22] p.14: "at least 1 millisecond"
 RESET_WAIT_S = 0.002   # [P22] p.15: "at least 2 milliseconds"
+
+# [P28] = "LR001 SLAMTEC rplidar protocol v2.8" (S & C series, 2023-10-16), lido em 2026-10-20.
 
 # --- Descritor de resposta ([P22] §2.4 "Response Packets' Format", p.8-9; Figs. 2-7, 2-8) --
 # 0xA5 0x5A, depois 4 bytes little-endian: bits 0..29 = tamanho de cada pacote de dados,
@@ -122,6 +131,25 @@ def expect_descriptor(desc: Descriptor, length: int, send_mode: int, data_type: 
         raise ProtocolError(
             f"resposta inesperada para {what}: tamanho={desc.length} modo={desc.send_mode} "
             f"tipo=0x{desc.data_type:02X} (esperado {length}/{send_mode}/0x{data_type:02X})")
+
+
+# --- Velocidade do motor (EXPERIMENTAL) -------------------------------------------------------
+def build_lidar_conf_request(entry: int) -> bytes:
+    return build_request(CMD_GET_LIDAR_CONF, struct.pack("<I", entry))
+
+
+def build_motor_speed_request(rpm: int) -> bytes:
+    """[P28] p.32. Recusa fora de 480-720 rpm (8-12 Hz, datasheet do C1); rpm = 0 (ocioso) tem função própria no STOP."""
+    if not C1_MIN_RPM <= rpm <= C1_MAX_RPM:
+        raise ValueError(f"rpm {rpm} fora da faixa do C1 ({C1_MIN_RPM}-{C1_MAX_RPM}, datasheet p.9)")
+    return build_request(CMD_MOTOR_SPEED_CTRL, struct.pack("<H", rpm))
+
+
+def parse_lidar_conf(data: bytes) -> tuple[int, bytes]:
+    """Resposta do GET_LIDAR_CONF: (tipo, valor bruto). O valor de cada entrada varia ([P28] p.29)."""
+    if len(data) < 4:
+        raise ProtocolError(f"GET_LIDAR_CONF: {len(data)} bytes (esperado >= 4)")
+    return struct.unpack_from("<I", data, 0)[0], bytes(data[4:])
 
 
 # --- GET_INFO / GET_HEALTH ----------------------------------------------------------------------

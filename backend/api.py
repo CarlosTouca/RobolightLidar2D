@@ -8,6 +8,7 @@ REST (JSON). Erros têm sempre o formato {"error": {"code": "...", "message": ".
   POST /api/disconnect
   POST /api/scan/start
   POST /api/scan/stop
+  POST /api/rotation      {"hz": 8..12}  velocidade de giro do sensor (simulador; 502 se a fonte não permite)
   POST /api/steer         {"x": -1..1, "y": -1..1, "speed": 0..255}  rover simulado (direção na tela)
   409 transição inválida (ex.: iniciar varredura sem conectar) | 502 falha da fonte
 
@@ -56,6 +57,16 @@ class SteerBody(BaseModel):
     x: float = Field(ge=-1, le=1)       # direita
     y: float = Field(ge=-1, le=1)       # cima
     speed: int = Field(150, ge=0, le=255)
+
+
+class RotationBody(BaseModel):
+    hz: float = Field(gt=0, le=60)
+
+
+@router.post("/api/rotation")
+def rotation(body: RotationBody, request: Request) -> dict:
+    _session(request).set_rotation(body.hz)
+    return _status(request)
 
 
 @router.post("/api/steer")

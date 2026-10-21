@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..models import DeviceInfo, Health, HealthStatus, Scan
+from ..models import DeviceInfo, Health, HealthStatus, Rotation, Scan
 from .base import LidarSource, SourceError
 
 Segment = tuple[tuple[float, float], tuple[float, float]]
@@ -182,7 +182,9 @@ def simulate_scan(scene: Scene, rng: np.random.Generator, n: int = 500,
 class Simulator(LidarSource):
     name = "simulator"
     PORT = "SIMULADOR"
-    SCAN_HZ = 10.0   # o C1 gira a ~10 Hz
+    SCAN_HZ = 10.0   # o C1 gira a ~10 Hz (padrão)
+    SAMPLE_RATE_HZ = 5000.0                       # taxa de amostragem fixa do C1 (datasheet p.9): pontos por volta = 5000 / Hz
+    ROTATION_MIN_HZ, ROTATION_MAX_HZ = 8.0, 12.0  # faixa de varredura do C1 (datasheet p.9)
     SPEED_MM_S = 1500.0  # velocidade do rover simulado a 100 % (escolha de visualização)
     TURN_DEG_S = 200.0   # giro máximo do rover (°/s)
     TURN_GAIN = 6.0      # o giro é proporcional ao erro (1/s): suave nos ajustes finos, até o máximo nas viradas grandes
@@ -198,12 +200,23 @@ class Simulator(LidarSource):
         self._scan_kwargs = scan_kwargs
         self._opened = False
         self._scanning = threading.Event()
+        self._hz = self.SCAN_HZ
         # Rover simulado estilo mouse: a direção pedida é na tela (x direita, y cima); ele gira até lá e anda.
         self._lock = threading.Lock()    # a leitura (10 Hz) e o ticker de pose (60 Hz) integram o movimento
         self._last_t = time.monotonic()
         self._pose = [0.0, 0.0, 0.0]     # x mm, y mm, rumo°
         self._steer = (0.0, 0.0, 0.0)    # (x, y, velocidade 0..1): direção pedida na tela e quão rápido
         self._cmd_at = 0.0               # instante do último steer()
+
+    def rotation(self) -> Rotation:
+        return Rotation(self._hz, self.ROTATION_MIN_HZ, self.ROTATION_MAX_HZ)
+
+    def set_rotation(self, hz: float) -> None:
+        """Como o C1: com a amostragem fixa, girar mais devagar dá mais pontos por volta (e vice-versa)."""
+        if not self.ROTATION_MIN_HZ <= hz <= self.ROTATION_MAX_HZ:
+            raise SourceError(f"velocidade de giro fora da faixa: {hz:g} Hz (permitido {self.ROTATION_MIN_HZ:g} a "
+                              f"{self.ROTATION_MAX_HZ:g} Hz)")
+        self._hz = float(hz)
 
     def steer(self, x: float, y: float, speed: float) -> None:
         mag = min(1.0, math.hypot(x, y))
@@ -282,13 +295,13 @@ class Simulator(LidarSource):
         self._scanning.clear()
 
     def scans(self) -> Iterator[Scan]:
-        period = 1.0 / self.SCAN_HZ
         deadline = time.monotonic()
         while self._scanning.is_set():
             self._raise_if_faulted()
             pose = self._integrate()
-            yield simulate_scan(self._scene, self._rng, pose=pose, **self._scan_kwargs)
-            deadline += period
+            kwargs = {"n": round(self.SAMPLE_RATE_HZ / self._hz), **self._scan_kwargs}
+            yield simulate_scan(self._scene, self._rng, pose=pose, **kwargs)
+            deadline += 1.0 / self._hz                  # lido a cada volta: mudar a velocidade vale na próxima
             delay = deadline - time.monotonic()
             if delay > 0:
                 time.sleep(delay)

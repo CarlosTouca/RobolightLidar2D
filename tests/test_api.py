@@ -146,3 +146,20 @@ def test_steer_needs_connection_and_validates_body(client):
     assert client.post("/api/steer", json={"x": 0.5, "y": -1}).json() == {"ok": True}   # speed é opcional
     assert client.post("/api/steer", json={"x": 2, "y": 0}).status_code == 422
     assert client.post("/api/steer", json={"x": 0, "y": 0, "speed": 300}).status_code == 422
+
+
+def test_rotation_needs_connection_validates_range_and_shows_in_status(client):
+    assert client.post("/api/rotation", json={"hz": 9}).status_code == 409
+    client.post("/api/connect", json={"port": "SIMULADOR"})
+    assert client.get("/api/status").json()["rotation"] == {"hz": 10.0, "min_hz": 8.0, "max_hz": 12.0}
+    assert client.post("/api/rotation", json={"hz": 8}).json()["rotation"]["hz"] == 8.0
+    r = client.post("/api/rotation", json={"hz": 20})
+    assert r.status_code == 502 and "fora da faixa" in r.json()["error"]["message"]
+    assert client.post("/api/rotation", json={"hz": 0}).status_code == 422
+
+
+def test_sources_that_cannot_change_rotation_say_so():
+    from backend.sources.base import LidarSource
+    assert LidarSource.rotation(object()) is None                 # padrão do contrato: sem controle (p.ex. o C1 real, ainda não validado)
+    with pytest.raises(SourceError):
+        LidarSource.set_rotation(object(), 9.0)

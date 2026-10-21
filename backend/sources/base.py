@@ -8,7 +8,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 
-from ..models import DeviceInfo, Health, Scan
+from ..models import DeviceInfo, Health, Rotation, Scan
 
 
 class SourceError(Exception):
@@ -30,6 +30,13 @@ class LidarSource(ABC):
     def error_count(self) -> int:
         """Pacotes inválidos descartados desde que a fonte foi aberta (0 se não se aplica)."""
         return 0
+
+    def rotation(self) -> Rotation | None:
+        """Velocidade de giro atual e faixa permitida, ou None se a fonte não deixa mudá-la."""
+        return None
+
+    def set_rotation(self, hz: float) -> None:
+        raise SourceError("esta fonte não permite mudar a velocidade de giro")
 
     def steer(self, x: float, y: float, speed: float) -> None:
         """Comando do rover simulado: direção desejada na tela (x direita, y cima, módulo até 1) e

@@ -26,8 +26,9 @@ from .base import LidarSource, SourceError
 from .rplidar_protocol import (
     CMD_GET_HEALTH, CMD_GET_INFO, CMD_RESET, CMD_SCAN, CMD_STOP, DEVINFO_SIZE, HEALTH_SIZE,
     MEASUREMENT_SIZE, RESET_WAIT_S, SEND_MULTIPLE, SEND_SINGLE, STOP_WAIT_S, TYPE_DEVINFO,
-    TYPE_HEALTH, TYPE_MEASUREMENT, ProtocolError, StandardScanDecoder, build_request,
-    expect_descriptor, find_descriptor, parse_device_info, parse_health,
+    TYPE_HEALTH, TYPE_LIDAR_CONF, TYPE_MEASUREMENT, ProtocolError, StandardScanDecoder, build_lidar_conf_request,
+    build_motor_speed_request, build_request, expect_descriptor, find_descriptor, parse_device_info, parse_health,
+    parse_lidar_conf,
 )
 
 try:
@@ -202,6 +203,44 @@ class RplidarC1(LidarSource):
 
     def _decode(self, data: bytes) -> Iterator[Scan]:
         yield from self._decoder.feed(data)
+
+    # --- velocidade do motor (EXPERIMENTAL: só o script c1_motor_test.py usa; NÃO validado no C1) ------
+    def read_conf(self, entry: int) -> bytes:
+        """GET_LIDAR_CONF: devolve o valor bruto da entrada (sem o tipo). Pode não ser suportado pelo firmware."""
+        self._require_open()
+        self._write(build_lidar_conf_request(entry))
+        buf = bytearray()
+        desc = self._read_descriptor(buf, self._info_timeout, "GET_LIDAR_CONF")
+        if (desc.send_mode, desc.data_type) != (SEND_SINGLE, TYPE_LIDAR_CONF):
+            raise SourceError(f"resposta inesperada ao GET_LIDAR_CONF: modo={desc.send_mode} tipo=0x{desc.data_type:02X}")
+        ser = self._require_open()
+        deadline = time.monotonic() + self._info_timeout
+        while len(buf) < desc.length:
+            if time.monotonic() > deadline:
+                raise SourceError(f"resposta incompleta ao GET_LIDAR_CONF: {len(buf)} de {desc.length} bytes")
+            try:
+                buf += ser.read(desc.length - len(buf))
+            except (OSError, ValueError) as e:
+                raise SourceError("conexão serial perdida: cabo ou adaptador USB desconectado?") from e
+        try:
+            got, value = parse_lidar_conf(bytes(buf[:desc.length]))
+        except ProtocolError as e:
+            raise SourceError(str(e)) from e
+        if got != entry:
+            raise SourceError(f"GET_LIDAR_CONF respondeu a outra entrada: 0x{got:X} (pedida 0x{entry:X})")
+        return value
+
+    def set_motor_rpm(self, rpm: int) -> None:
+        """MOTOR_SPEED_CTRL (sem resposta). Só com varredura ativa e dentro de 480-720 rpm (o protocolo manda o rpm,
+        não há confirmação: confira a rotação medindo o intervalo entre voltas)."""
+        self._require_open()
+        if not self._scanning.is_set():
+            raise SourceError("o motor só gira com a varredura ativa: inicie a varredura antes de mudar a rotação")
+        try:
+            self._write(build_motor_speed_request(rpm))
+        except ValueError as e:
+            raise SourceError(str(e)) from e
+        time.sleep(0.01)
 
     # --- baixo nível ------------------------------------------------------------------------------------
     def _require_open(self):
