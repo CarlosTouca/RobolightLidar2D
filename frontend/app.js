@@ -167,7 +167,7 @@ let blindDragging = false;
 // ---- Mapa guardado: guardar/limpar/salvar --------------------------------------------------
 function showMapCount() {
   const n = plot.mapSize();
-  $('map-count').textContent = `${n.toLocaleString('pt-BR')} ${n === 1 ? 'ponto guardado' : 'pontos guardados'}`;
+  $('map-count').textContent = `${n.toLocaleString('pt-BR')} ${n === 1 ? 'ponto de parede' : 'pontos de parede'}`;
   $('map-clear').disabled = $('map-save').disabled = n === 0;
 }
 $('map-keep').addEventListener('change', () => plot.setKeep($('map-keep').checked));

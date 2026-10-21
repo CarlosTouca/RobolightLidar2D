@@ -67,11 +67,15 @@ na tela girada), X/O param enquanto apertados e L1/R1 mudam a velocidade; o coma
 e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
 do firmware, onde esquerda/direita giram no lugar): é só uma forma intuitiva de explorar o mapa.
 
-**Mapa guardado.** Com posição conhecida, o painel "Mapa" guarda os pontos já vistos para o mapa ir se formando
-enquanto o rover anda: uma célula de 5 cm por ponto (o mais recente vence), no máximo 40 mil pontos (os mais antigos
-saem primeiro), desenhados esmaecidos sob a varredura atual. "Limpar mapa" zera, "Salvar (CSV)" baixa
-`x_mm,y_mm,qualidade` (mundo, mm) e desconectar limpa o mapa (outra sessão, outras coordenadas). Fica no navegador
-(`frontend/mapmemory.js`); recarregar a página perde o mapa.
+**Mapa guardado (só as paredes).** Com posição conhecida, o painel "Mapa" forma o mapa enquanto o rover anda, mas
+guarda só o que é **parede**, não todo ponto visto: uma grade de ocupação de 5 cm (`frontend/mapmemory.js`) em que
+cada batida do LiDAR sobe a confiança da célula e cada raio que a atravessa (o LiDAR viu além) a desce; só aparecem
+células confirmadas (duas batidas seguidas). Parede é vista de novo a cada varredura e se firma; ruído, pessoa
+passando e pontos fora do lugar (posição estimada errada) não chegam a se firmar, e um raio que atravessa o lugar
+depois apaga o que sobrou; peça presa ao rover cai em células diferentes a cada varredura, então nenhuma se
+confirma. Células não confirmadas e antigas (30 varreduras) são descartadas. Desenhado esmaecido sob a varredura
+atual. "Limpar mapa" zera, "Salvar (CSV)" baixa só as paredes (`x_mm,y_mm,qualidade`, mundo, mm) e desconectar
+limpa o mapa (outra sessão, outras coordenadas). Fica no navegador; recarregar a página perde o mapa.
 
 **Posição só pelo LiDAR (C1 real; EXPERIMENTAL).** O C1 não informa onde está, então `backend/localization.py`
 estima a posição comparando cada varredura com uma de referência (ICP ponto-a-reta, com quadro-chave a cada 10 cm

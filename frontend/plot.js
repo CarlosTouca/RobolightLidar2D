@@ -235,7 +235,8 @@ export function createPlot(el, rangeM) {
     }
     // Só com posição conhecida (simulador, ou a estimativa do rover real): sem ela os pontos de varreduras
     // diferentes não se alinham e o mapa viraria um borrão.
-    if (frame && frame.pose && keep && remember) memory.add(world.x, world.y, frame.q);   // remember=false: só redesenha (p.ex. ao limpar)
+    // Grade de ocupação: os raios partem de onde o sensor estava (pose da varredura). remember=false: só redesenha.
+    if (frame && frame.pose && keep && remember) memory.add(world.x, world.y, frame.q, frame.pose[0] / 1000, frame.pose[1] / 1000);
     const n = world.x.length;
     const [xs, ys] = viewPoints();
     const [mx, my] = memoryView();
