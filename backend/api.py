@@ -8,6 +8,7 @@ REST (JSON). Erros têm sempre o formato {"error": {"code": "...", "message": ".
   POST /api/disconnect
   POST /api/scan/start
   POST /api/scan/stop
+  POST /api/pose/reset    volta a posição estimada (só pelo LiDAR) para a origem: mapa novo
   POST /api/rotation      {"hz": 8..12}  velocidade de giro do sensor (simulador; 502 se a fonte não permite)
   POST /api/steer         {"x": -1..1, "y": -1..1, "speed": 0..255}  rover simulado (direção na tela)
   409 transição inválida (ex.: iniciar varredura sem conectar) | 502 falha da fonte
@@ -61,6 +62,12 @@ class SteerBody(BaseModel):
 
 class RotationBody(BaseModel):
     hz: float = Field(gt=0, le=60)
+
+
+@router.post("/api/pose/reset")
+def pose_reset(request: Request) -> dict:
+    _session(request).reset_pose()
+    return _status(request)
 
 
 @router.post("/api/rotation")

@@ -17,6 +17,7 @@ from collections.abc import Callable
 
 from .config import POSE_FPS
 from .hub import Hub
+from .localization import PoseEstimator
 from .models import DeviceInfo, Health, Status
 from .pipeline import scan_to_frame
 from .sources.base import LidarSource, SourceError
@@ -54,6 +55,9 @@ class Session:
         self._error = ""
         self.scan_count = 0
         self.last_points = 0
+        self._estimator: PoseEstimator | None = None   # posição só pelo LiDAR, para fontes que não a informam (C1 real)
+        self._pose_mode = ""
+        self.pose_ok = True
 
     # --- consulta ----------------------------------------------------------------
     @property
@@ -68,6 +72,7 @@ class Session:
                       port=self._port, info=self._info, health=self._health,
                       points=self.last_points,
                       errors=source.error_count if source else 0,
+                      pose_mode=self._pose_mode if source else "", pose_ok=self.pose_ok,
                       rotation=source.rotation() if source else None,
                       error=self._error)
 
@@ -93,6 +98,9 @@ class Session:
                     raise SourceError(f"falha ao abrir {port}: {e}") from e
                 raise
             self._source, self._port, self._error = source, port, ""
+            self._estimator = PoseEstimator() if source.pose() is None else None
+            self._pose_mode = "estimada" if self._estimator else "fonte"
+            self.pose_ok = True
             self.scan_count = self.last_points = 0
             self._state = "connected"
 
@@ -114,6 +122,14 @@ class Session:
             if self._source.pose() is not None:     # só o rover simulado: posição a ~60/s, à parte das varreduras
                 threading.Thread(target=self._pose_loop, args=(self._source, self._thread),
                                  name="lidar-pose", daemon=True).start()
+
+    def reset_pose(self) -> None:
+        """Volta a posição estimada para a origem (começa um mapa novo). Só existe quando a posição é estimada."""
+        est = self._estimator
+        if est is None:
+            raise SessionError("no_estimator", "esta fonte já informa a posição; não há o que zerar")
+        est.reset()
+        self.pose_ok = True
 
     def set_rotation(self, hz: float) -> None:
         source = self._source
@@ -157,6 +173,7 @@ class Session:
         with self._lock:
             self._info = self._health = None
             self._port = ""
+            self._estimator, self._pose_mode = None, ""
             self._state = "disconnected"
             self.last_points = 0
         self._hub.clear()
@@ -193,6 +210,14 @@ class Session:
                 if self._thread is not threading.current_thread():
                     break                             # sessão encerrada/substituída: não publicar mais
                 frame = scan_to_frame(scan)
+                est = self._estimator
+                if est is not None and frame.pose is None:   # fonte sem posição (C1 real): estima pelo LiDAR
+                    try:
+                        frame.pose, self.pose_ok = est.update(frame.x, frame.y)
+                    except Exception:                         # a estimativa nunca derruba a varredura
+                        log.exception("falha ao estimar a posição; mantendo a última")
+                        frame.pose, self.pose_ok = est.pose, False
+                    self._hub.publish_pose(frame.pose)
                 self._hub.publish(frame)
                 self.last_points = len(frame.x)
                 self.scan_count += 1

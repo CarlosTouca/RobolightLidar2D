@@ -67,13 +67,22 @@ na tela girada), X/O param enquanto apertados e L1/R1 mudam a velocidade; o coma
 e, sem comandos por 0,8 s, o rover para. Não é a lógica de tração do rover de verdade (letras F T E D
 do firmware, onde esquerda/direita giram no lugar): é só uma forma intuitiva de explorar o mapa.
 
-**Mapa guardado.** Com posição conhecida (hoje só o simulador), o painel "Mapa" guarda os pontos já vistos para o mapa
-ir se formando enquanto o rover anda: uma célula de 5 cm por ponto (o mais recente vence), no máximo 40 mil pontos
-(os mais antigos saem primeiro), desenhados esmaecidos sob a varredura atual. "Limpar mapa" zera, "Salvar (CSV)"
-baixa `x_mm,y_mm,qualidade` (mundo, mm) e desconectar limpa o mapa (outra sessão, outras coordenadas). Fica no
-navegador (`frontend/mapmemory.js`); recarregar a página perde o mapa. **No C1 real ainda não funciona**: o sensor não
-informa a posição, e sem ela varreduras diferentes não se alinham. O próximo passo é estimar a posição só pelo LiDAR
-(casamento de varreduras) e entregá-la no mesmo campo `pose`, sem mudar o mapa.
+**Mapa guardado.** Com posição conhecida, o painel "Mapa" guarda os pontos já vistos para o mapa ir se formando
+enquanto o rover anda: uma célula de 5 cm por ponto (o mais recente vence), no máximo 40 mil pontos (os mais antigos
+saem primeiro), desenhados esmaecidos sob a varredura atual. "Limpar mapa" zera, "Salvar (CSV)" baixa
+`x_mm,y_mm,qualidade` (mundo, mm) e desconectar limpa o mapa (outra sessão, outras coordenadas). Fica no navegador
+(`frontend/mapmemory.js`); recarregar a página perde o mapa.
+
+**Posição só pelo LiDAR (C1 real; EXPERIMENTAL).** O C1 não informa onde está, então `backend/localization.py`
+estima a posição comparando cada varredura com uma de referência (ICP ponto-a-reta, com quadro-chave a cada 10 cm
+ou 5°) e acumula o deslocamento e o giro; a `Session` põe o resultado no campo `pose` de cada quadro, e o mapa, o
+rover desenhado e o "Limpar mapa" funcionam como no simulador (`pose_mode` = `estimada` no `/api/status`; `Limpar
+mapa` também chama `POST /api/pose/reset`). Medido: no simulador, em ~6 m pela casa, erro de posição de 50 a 70 mm e
+menos de 1° (a verdade é conhecida); na captura real do C1 parado (128 voltas, 442 pontos), deriva de 3,4 mm; cerca
+de 30 ms por varredura. **Não validado com o rover real em movimento.** Limites esperados: em corredor comprido e
+liso a estimativa para de avançar nesse eixo; o erro se acumula (não há fechamento de laço, então voltar ao ponto
+de partida não "fecha" o mapa); giros de mais de ~15° entre duas varreduras (150°/s) podem perder o
+alinhamento. Quando perde, a posição fica parada e o painel avisa.
 
 Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico mostra o **mapa fixo**: a sala
 fica parada e o rover (desenhado de cima, com o LiDAR no centro) anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como

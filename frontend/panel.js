@@ -11,6 +11,7 @@ const POLL_MS = 1000;
 /**
  * hooks.onRange(m)          — usuário aplicou novo alcance
  * hooks.onState(state)    — estado do servidor a cada atualização
+ * hooks.onStatus(status)  — o status completo (posição estimada, etc.)
  * hooks.onStopped()         — a varredura deixou de estar ativa (limpar o gráfico)
  */
 export function initPanel(hooks) {
@@ -89,6 +90,7 @@ export function initPanel(hooks) {
     status = newStatus;
     offline = false;
     hooks.onState(status.state);
+    if (hooks.onStatus) hooks.onStatus(status);
     if (was === 'scanning' && status.state !== 'scanning') hooks.onStopped();
     render();
   }
