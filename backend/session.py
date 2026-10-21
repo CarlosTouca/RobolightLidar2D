@@ -18,6 +18,7 @@ from collections.abc import Callable
 from .config import POSE_FPS
 from .hub import Hub
 from .localization import PoseEstimator
+from .recorder import ScanRecorder
 from .models import DeviceInfo, Health, Status
 from .pipeline import scan_to_frame
 from .sources.base import LidarSource, SourceError
@@ -58,6 +59,7 @@ class Session:
         self._estimator: PoseEstimator | None = None   # posição só pelo LiDAR, para fontes que não a informam (C1 real)
         self._pose_mode = ""
         self.pose_ok = True
+        self.recorder = ScanRecorder()                 # últimas varreduras com posição estimada (diagnóstico)
 
     # --- consulta ----------------------------------------------------------------
     @property
@@ -73,6 +75,7 @@ class Session:
                       points=self.last_points,
                       errors=source.error_count if source else 0,
                       pose_mode=self._pose_mode if source else "", pose_ok=self.pose_ok,
+                      pose_blind_m=self._estimator.min_range_mm / 1000 if self._estimator else 0.0,
                       rotation=source.rotation() if source else None,
                       error=self._error)
 
@@ -99,6 +102,7 @@ class Session:
                 raise
             self._source, self._port, self._error = source, port, ""
             self._estimator = PoseEstimator() if source.pose() is None else None
+            self.recorder.clear()
             self._pose_mode = "estimada" if self._estimator else "fonte"
             self.pose_ok = True
             self.scan_count = self.last_points = 0
@@ -130,6 +134,12 @@ class Session:
             raise SessionError("no_estimator", "esta fonte já informa a posição; não há o que zerar")
         est.reset()
         self.pose_ok = True
+
+    def set_blind_zone(self, m: float) -> None:
+        est = self._estimator
+        if est is None:
+            raise SessionError("no_estimator", "esta fonte já informa a posição; não há zona cega a ajustar")
+        est.set_min_range(m * 1000)
 
     def set_rotation(self, hz: float) -> None:
         source = self._source
@@ -218,6 +228,7 @@ class Session:
                         log.exception("falha ao estimar a posição; mantendo a última")
                         frame.pose, self.pose_ok = est.pose, False
                     self._hub.publish_pose(frame.pose)
+                    self.recorder.add(time.time(), frame, frame.pose, self.pose_ok)
                 self._hub.publish(frame)
                 self.last_points = len(frame.x)
                 self.scan_count += 1

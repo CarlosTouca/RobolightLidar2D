@@ -19,6 +19,8 @@ import math
 import numpy as np
 
 MAX_RANGE_MM = 8000.0          # pontos mais longos são esparsos e ruidosos demais para casar
+DEFAULT_MIN_RANGE_MM = 800.0   # "zona cega": o que está mais perto é do próprio rover (mastro, cabos, bateria) e anda junto com o
+                               # sensor; esses pontos parecem imóveis e fazem o casamento achar que o rover não saiu do lugar
 NEIGHBOR_GAP_MM = 200.0        # vizinhos mais distantes que isso não formam uma parede (descontinuidade)
 KEYFRAME_MM, KEYFRAME_DEG = 100.0, 5.0   # novo quadro-chave quando o rover se afastou tanto do atual
 MAX_ITER = 20
@@ -82,7 +84,8 @@ def match(new: np.ndarray, ref: np.ndarray, normals: np.ndarray, ok: np.ndarray,
 class PoseEstimator:
     """Uma varredura por vez, em mm no referencial do sensor (x direita, y frente), em ordem de ângulo."""
 
-    def __init__(self):
+    def __init__(self, min_range_mm: float = DEFAULT_MIN_RANGE_MM):
+        self.min_range_mm = min_range_mm
         self.reset()
 
     def reset(self) -> None:
@@ -92,6 +95,12 @@ class PoseEstimator:
         self._rel = (0.0, 0.0, 0.0)          # último T relativo ao quadro-chave (chute inicial da próxima)
         self._lost = 0
 
+    def set_min_range(self, mm: float) -> None:
+        """Muda a zona cega. Descarta o quadro-chave (foi feito com a zona antiga); a posição é mantida."""
+        self.min_range_mm = float(mm)
+        self._ref = None
+        self._lost = 0
+
     def _keyframe(self, pts: np.ndarray) -> None:
         n, ok = surface_normals(pts)
         self._ref = (pts, n, ok, self.pose)
@@ -99,7 +108,8 @@ class PoseEstimator:
 
     def update(self, xs, ys) -> tuple[tuple[float, float, float], bool]:
         pts = np.column_stack([xs, ys]).astype(float)
-        pts = pts[np.hypot(pts[:, 0], pts[:, 1]) <= MAX_RANGE_MM]
+        dist = np.hypot(pts[:, 0], pts[:, 1])
+        pts = pts[(dist >= self.min_range_mm) & (dist <= MAX_RANGE_MM)]
         if len(pts) < 50:                                            # quase nada à vista: não dá para casar
             self.ok = False
             return self.pose, False

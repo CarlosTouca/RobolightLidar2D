@@ -49,7 +49,7 @@ def test_surface_normals_of_a_straight_wall_point_across_it():
 
 
 def test_pose_follows_the_true_path_through_the_simulated_house():
-    scene, rng, est = house_scene(), np.random.default_rng(0), PoseEstimator()
+    scene, rng, est = house_scene(), np.random.default_rng(0), PoseEstimator(min_range_mm=300)
     path, lost, worst = trajectory(), 0, 0.0
     for p in path:
         f = scan_to_frame(simulate_scan(scene, rng, pose=p))                          # ruído, perdas e jitter do simulador
@@ -76,7 +76,7 @@ def test_stationary_real_c1_capture_does_not_drift():
 
 
 def test_unmatchable_scan_keeps_the_pose_and_reports_lost():
-    scene, rng, est = house_scene(), np.random.default_rng(1), PoseEstimator()
+    scene, rng, est = house_scene(), np.random.default_rng(1), PoseEstimator(min_range_mm=300)
     f = scan_to_frame(simulate_scan(scene, rng))
     est.update(f.x, f.y)
     est.update(f.x, f.y)
@@ -89,7 +89,7 @@ def test_unmatchable_scan_keeps_the_pose_and_reports_lost():
 
 
 def test_reset_goes_back_to_the_origin():
-    scene, rng, est = house_scene(), np.random.default_rng(2), PoseEstimator()
+    scene, rng, est = house_scene(), np.random.default_rng(2), PoseEstimator(min_range_mm=300)
     for p in trajectory()[:40]:
         f = scan_to_frame(simulate_scan(scene, rng, pose=p))
         est.update(f.x, f.y)
@@ -119,7 +119,9 @@ def test_session_estimates_the_pose_for_a_source_that_has_none():
     s = Session(hub, source_for_port=lambda p: sim)
     s.connect("SIMULADOR")
     try:
-        assert s.status().pose_mode == "estimada"
+        assert s.status().pose_mode == "estimada" and s.status().pose_blind_m == pytest.approx(0.8)
+        s.set_blind_zone(0.3)                     # a parede está a menos de 0,8 m do ponto final
+        assert s.status().pose_blind_m == pytest.approx(0.3)
         s.start_scan()
         t_end = time.monotonic() + 2.0
         while time.monotonic() < t_end:           # anda para a frente (e renova o comando, senão o rover para sozinho)
@@ -151,3 +153,69 @@ def test_sources_that_report_their_own_pose_are_not_estimated(tmp_path):
         assert st["pose_mode"] == "fonte" and st["pose_ok"] is True
         r = c.post("/api/pose/reset")
         assert r.status_code == 409 and "já informa a posição" in r.json()["error"]["message"]
+
+
+def test_points_attached_to_the_rover_fool_the_match_unless_the_blind_zone_covers_them():
+    scene, path = house_scene(), trajectory()
+    ang = np.radians(np.linspace(200, 330, 60))
+    rad = np.linspace(500, 750, 60)                                    # mastro/cabos/bateria: andam junto com o sensor
+    fixed = (np.sin(ang) * rad, np.cos(ang) * rad)
+
+    def worst_error(min_range_mm):
+        rng, est, worst = np.random.default_rng(0), PoseEstimator(min_range_mm=min_range_mm), 0.0
+        for p in path:
+            f = scan_to_frame(simulate_scan(scene, rng, pose=p))
+            e, _ = est.update(np.concatenate([f.x, fixed[0]]), np.concatenate([f.y, fixed[1]]))
+            worst = max(worst, math.hypot(e[0] - p[0], e[1] - p[1]))
+        return worst
+
+    assert worst_error(300) > 1000.0                                   # sem zona cega: acha que o rover quase não andou
+    assert worst_error(800) < 150.0                                    # com a zona cega padrão: acompanha o caminho
+
+
+def test_recorder_keeps_the_latest_scans_and_writes_ndjson():
+    import json
+
+    from backend.models import Frame
+    from backend.recorder import ScanRecorder
+
+    rec = ScanRecorder(max_scans=3)
+    for i in range(5):
+        rec.add(float(i), Frame(x=[i, i + 1], y=[-i, 5], q=[10, 20]), (i * 10.0, 0.0, 90.0), i % 2 == 0)
+    rows = [json.loads(line) for line in rec.lines()]
+    assert rows[0]["formato"] == 1 and len(rows) == 4                     # cabeçalho + as 3 últimas
+    assert [r["t"] for r in rows[1:]] == [2.0, 3.0, 4.0] and rows[1]["x"] == [2, 3] and rows[1]["y"] == [-2, 5]
+    assert rows[3]["pose"] == [40.0, 0.0, 90.0] and rows[3]["ok"] is True and rows[2]["ok"] is False
+
+
+def test_replay_script_reads_a_recording_and_reports(tmp_path, capsys):
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location("replay_scans", Path(__file__).parent.parent / "scripts" / "replay_scans.py")
+    rs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rs)
+    scene, rng = house_scene(), np.random.default_rng(3)
+    lines = [json.dumps({"formato": 1, "unidade": "mm"})]
+    for p in trajectory()[:30]:
+        f = scan_to_frame(simulate_scan(scene, rng, pose=p))
+        lines.append(json.dumps({"t": 0, "x": f.x, "y": f.y, "q": f.q, "pose": None, "ok": True}))
+    path = tmp_path / "v.ndjson"
+    path.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+    assert rs.main([str(path), "--min-range", "0.3", "--png", str(tmp_path / "m.png")]) == 0
+    out = capsys.readouterr().out
+    assert "30 varreduras" in out and "replay com zona cega" in out and (tmp_path / "m.png").exists()
+
+
+def test_blind_zone_and_recording_endpoints():
+    from fastapi.testclient import TestClient
+
+    from backend.main import create_app
+    with TestClient(create_app()) as c:
+        assert c.post("/api/pose/blind", json={"m": 1.0}).status_code == 409           # sem conexão
+        c.post("/api/connect", json={"port": "SIMULADOR"})
+        assert c.post("/api/pose/blind", json={"m": 1.0}).status_code == 409           # o simulador já informa a posição
+        assert c.post("/api/pose/blind", json={"m": 9}).status_code == 422
+        r = c.get("/api/recording")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("application/x-ndjson")
+        assert "attachment" in r.headers["content-disposition"] and r.text.startswith('{"formato"')

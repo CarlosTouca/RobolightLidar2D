@@ -84,6 +84,20 @@ liso a estimativa para de avançar nesse eixo; o erro se acumula (não há fecha
 de partida não "fecha" o mapa); giros de mais de ~15° entre duas varreduras (150°/s) podem perder o
 alinhamento. Quando perde, a posição fica parada e o painel avisa.
 
+**Zona cega (primeiro problema achado com o sensor real).** Peças presas ao rover (mastro, cabos, bateria) andam
+junto com o sensor: nas varreduras elas parecem imóveis e o casamento conclui que o rover quase não saiu do lugar,
+então a posição fica para trás e o mapa vira riscos e arcos em volta do rover. Reproduzido no simulador: só 6% dos
+pontos presos ao rover levam o erro a 2,5 m. A correção é ignorar o que está mais perto que a **zona cega**
+(padrão 0,8 m; no painel, "Zona cega", sob "Mapa", só com posição estimada): com 60 pontos presos entre 50 e 75 cm o
+erro cai de mais de 1 m para menos de 15 cm. Ajuste-a para um pouco mais que o raio dessas peças; em lugar
+apertado (corredor de menos de ~1,6 m) uma zona grande tira as paredes do casamento, então reduza. A detecção
+automática dessas peças fica para depois.
+
+**Diagnóstico com dados reais.** Com a posição estimada, o servidor guarda as últimas ~2 min de varreduras brutas
+(`GET /api/recording`, botão "Baixar varreduras (diagnóstico)", NDJSON). `scripts/replay_scans.py arquivo.ndjson
+[--min-range 1.2] [--png saida.png]` refaz a estimativa offline com o código atual e mostra quantas vezes perdeu o
+alinhamento e o que mudaria com outra zona cega, sem abrir porta serial.
+
 Com o simulador, cada quadro traz `pose` (`[x mm, y mm, rumo°]`) e o gráfico mostra o **mapa fixo**: a sala
 fica parada e o rover (desenhado de cima, com o LiDAR no centro) anda e gira. Com o sensor real não há `pose` e o sensor fica na origem, como
 antes. O simulador é uma **casa** de 10 x 8 m (`house_scene()`: sala, cozinha, corredor, dois quartos e banheiro, com

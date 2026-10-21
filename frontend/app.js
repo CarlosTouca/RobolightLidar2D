@@ -150,13 +150,19 @@ initPanel({
     serverState = s;
   },
   onStopped: clearView,
-  onStatus: (st) => { poseMode = st.pose_mode || ''; poseOk = st.pose_ok !== false; showMapNote(); },
+  onStatus: (st) => {
+    poseMode = st.pose_mode || ''; poseOk = st.pose_ok !== false;
+    if (st.pose_blind_m) blindM = st.pose_blind_m;
+    showMapNote();
+  },
 });
 
 initGamepad(plot);
 
 let poseMode = '';   // "fonte" (simulador), "estimada" (só pelo LiDAR) ou "" (sem posição)
 let poseOk = true;
+let blindM = 0.8;
+let blindDragging = false;
 
 // ---- Mapa guardado: guardar/limpar/salvar --------------------------------------------------
 function showMapCount() {
@@ -172,7 +178,20 @@ function showMapNote() {
     fonte: 'A posição vem do simulador.',
   }[poseMode] || 'Esta fonte não informa a posição: o mapa não é guardado.';
   $('map-note').style.color = poseMode === 'estimada' && !poseOk ? 'var(--warn)' : '';
+  showBlind();
 }
+function showBlind() {
+  $('blind-box').hidden = poseMode !== 'estimada';
+  if (!blindDragging) $('blind-m').value = blindM;
+  $('blind-label').textContent = `${parseFloat($('blind-m').value).toFixed(1)} m`;
+}
+$('blind-m').addEventListener('input', () => { blindDragging = true; showBlind(); });
+$('blind-m').addEventListener('change', async () => {
+  const m = parseFloat($('blind-m').value);
+  blindM = m;
+  await api.blind(m).catch(() => {});
+  blindDragging = false;
+});
 $('map-clear').title = 'Apaga o mapa. Com a posição estimada, a posição também volta para a origem.';
 $('map-clear').addEventListener('click', async () => {
   if (poseMode === 'estimada') await api.resetPose().catch(() => {});   // mapa novo = origem nova

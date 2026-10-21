@@ -62,6 +62,15 @@
         <button id="map-save" type="button" disabled>Salvar (CSV)</button>
       </div>
       <p id="map-note" class="port-desc">—</p>
+      <div id="blind-box" hidden>
+        <div class="row head">
+          <label for="blind-m">Zona cega</label>
+          <b id="blind-label" class="value">—</b>
+        </div>
+        <input id="blind-m" type="range" min="0.2" max="2" step="0.1" value="0.8" class="wide">
+        <p class="port-desc">Ignora o que está mais perto que isso. Coisas presas ao rover (mastro, cabos, bateria) andam junto com o sensor e enganam a posição: ponha a zona um pouco maior que elas. Em lugar apertado, diminua.</p>
+        <a id="rec-link" class="linkbtn" href="/api/recording" download="varreduras.ndjson">Baixar varreduras (diagnóstico)</a>
+      </div>
     </section>
 
     <section>
